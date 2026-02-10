@@ -1,7 +1,16 @@
+import sys
+import os
+from pathlib import Path
+
+# --- MAGIC PATH FIX (Required for Cloud & Local to find 'app') ---
+# This tells Python: "Start looking for files from the Project Root, not just this folder"
+root_path = Path(__file__).parent.parent.parent
+sys.path.append(str(root_path))
+
 import streamlit as st
 from datetime import datetime, date, time
 
-# --- DIRECT IMPORT (Connects Frontend directly to Backend Logic) ---
+# --- DIRECT IMPORTS (Now they will work!) ---
 from app.backend.scheduler import ScheduleEngine
 from app.backend.models import Task, UserPreferences, TaskPriority
 
@@ -9,7 +18,7 @@ st.set_page_config(page_title="ScheduleSmart", page_icon="📅", layout="wide")
 
 def main():
     st.title("📅 ScheduleSmart")
-    st.markdown("### Intelligent Study Planner")
+    st.markdown("### Intelligent Study Planner | Dissertation Edition")
     st.markdown("---")
 
     # --- SIDEBAR CONFIGURATION ---
@@ -58,10 +67,12 @@ def main():
                 st.text(f"{i+1}. {t['name']} ({t['duration_minutes']}m) - {t['priority'].upper()}")
 
             if st.button("🚀 Generate Schedule"):
-                with st.spinner("Crunching the numbers with AI..."):
-                    # DIRECT LOGIC CALL
-                    result = run_schedule_logic(start_time, end_time, include_weekends, strategy)
-                    st.session_state.schedule_result = result
+                with st.spinner("Running Optimization Engine..."):
+                    try:
+                        result = run_schedule_logic(start_time, end_time, include_weekends, strategy)
+                        st.session_state.schedule_result = result
+                    except Exception as e:
+                        st.error(f"Optimization Failed: {e}")
         else:
             st.info("No tasks added yet.")
 
@@ -72,46 +83,50 @@ def main():
 
         result = st.session_state.schedule_result
 
-        m1, m2, m3 = st.columns(3)
-        m1.metric("Total Study Hours", f"{result['total_hours']:.1f} hrs")
-        m2.metric("Tasks Scheduled", len(result['scheduled_tasks']))
+        if result['status'] == "failed":
+            st.error("Could not find a valid schedule. Try extending deadlines or enabling weekends.")
+        else:
+            m1, m2 = st.columns(2)
+            m1.metric("Total Study Hours", f"{result['total_hours']:.1f} hrs")
+            m2.metric("Tasks Scheduled", len(result['scheduled_tasks']))
 
-        if len(result['scheduled_tasks']) > 0:
-            st.balloons()
-            st.success("Optimization Successful! Here is your plan:")
+            if len(result['scheduled_tasks']) > 0:
+                st.balloons()
+                st.success("Optimization Successful! Here is your plan:")
 
-        for task in result['scheduled_tasks']:
-            with st.expander(f"✅ {task['start_time'].strftime('%H:%M')} - {task['name']}", expanded=True):
-                st.write(f"**Time:** {task['start_time'].strftime('%A, %d %b %Y %H:%M')} to {task['end_time'].strftime('%H:%M')}")
-                st.write(f"**Reasoning:** *{task['reason']}*")
+            for task in result['scheduled_tasks']:
+                with st.expander(f"✅ {task['start_time'].strftime('%H:%M')} - {task['name']}", expanded=True):
+                    st.write(f"**Time:** {task['start_time'].strftime('%A, %d %b %Y %H:%M')} to {task['end_time'].strftime('%H:%M')}")
+                    st.write(f"**Reasoning:** *{task['reason']}*")
 
 def add_task_to_session(name, duration, priority, deadline):
     if "tasks" not in st.session_state:
         st.session_state.tasks = []
 
-    # Store raw data in session
     new_task = {
         "id": str(len(st.session_state.tasks) + 1),
         "name": name,
         "duration_minutes": duration,
         "priority": priority,
-        "deadline": deadline, # Keep as date object
+        "deadline": deadline,
         "fixed_slot": None
     }
     st.session_state.tasks.append(new_task)
 
 def run_schedule_logic(start, end, weekends, strategy):
-    # 1. Convert Session Data to Pydantic Models
+    # Convert Session Data to Pydantic Models
     task_objects = []
     for t in st.session_state.tasks:
-        # Convert deadline date to datetime
         dt_deadline = datetime.combine(t['deadline'], time(23, 59))
+
+        # Determine priority Enum
+        prio_map = {"high": TaskPriority.HIGH, "medium": TaskPriority.MEDIUM, "low": TaskPriority.LOW}
 
         task_objects.append(Task(
             id=t['id'],
             name=t['name'],
             duration_minutes=t['duration_minutes'],
-            priority=TaskPriority(t['priority']),
+            priority=prio_map[t['priority']],
             deadline=dt_deadline
         ))
 
@@ -121,11 +136,10 @@ def run_schedule_logic(start, end, weekends, strategy):
         include_weekends=weekends
     )
 
-    # 2. Instantiate the Engine Directly (No API Call!)
+    # Instantiate the Engine Directly
     engine = ScheduleEngine()
     result = engine.generate_schedule(task_objects, prefs, method=strategy)
 
-    # 3. Calculate Stats
     total_minutes = sum([t.duration_minutes for t in task_objects])
 
     return {
