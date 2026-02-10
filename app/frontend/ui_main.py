@@ -1,16 +1,18 @@
 import streamlit as st
-import httpx
-from datetime import datetime, date
+from datetime import datetime, date, time
 
-st.set_page_config(page_title="ScheduleSmart", page_icon="📅", layout="wide", initial_sidebar_state="expanded")
+# --- DIRECT IMPORT (Connects Frontend directly to Backend Logic) ---
+from app.backend.scheduler import ScheduleEngine
+from app.backend.models import Task, UserPreferences, TaskPriority
 
-API_URL = "http://127.0.0.1:8000"
+st.set_page_config(page_title="ScheduleSmart", page_icon="📅", layout="wide")
 
 def main():
     st.title("📅 ScheduleSmart")
     st.markdown("### Intelligent Study Planner")
     st.markdown("---")
 
+    # --- SIDEBAR CONFIGURATION ---
     with st.sidebar:
         st.header("⚙️ Configuration")
 
@@ -30,6 +32,7 @@ def main():
 
     col1, col2 = st.columns([1, 2])
 
+    # --- ADD TASK FORM ---
     with col1:
         st.subheader("📝 Add New Task")
         with st.form("task_form"):
@@ -44,6 +47,7 @@ def main():
             add_task_to_session(task_name, duration, priority, deadline_date)
             st.toast(f"Task Added: {task_name}", icon="✅")
 
+    # --- TASK QUEUE & GENERATION ---
     with col2:
         st.subheader("📋 Your Task Queue")
         if "tasks" not in st.session_state:
@@ -54,11 +58,14 @@ def main():
                 st.text(f"{i+1}. {t['name']} ({t['duration_minutes']}m) - {t['priority'].upper()}")
 
             if st.button("🚀 Generate Schedule"):
-                with st.spinner("Crunching the numbers..."):
-                    generate_schedule(start_time, end_time, include_weekends, strategy)
+                with st.spinner("Crunching the numbers with AI..."):
+                    # DIRECT LOGIC CALL
+                    result = run_schedule_logic(start_time, end_time, include_weekends, strategy)
+                    st.session_state.schedule_result = result
         else:
             st.info("No tasks added yet.")
 
+    # --- DISPLAY RESULTS ---
     if "schedule_result" in st.session_state:
         st.markdown("---")
         st.subheader("✨ Your Optimized Schedule")
@@ -68,12 +75,65 @@ def main():
         m1, m2, m3 = st.columns(3)
         m1.metric("Total Study Hours", f"{result['total_hours']:.1f} hrs")
         m2.metric("Tasks Scheduled", len(result['scheduled_tasks']))
-        m3.metric("Efficiency Score", "100%")
 
         if len(result['scheduled_tasks']) > 0:
-            st.toast("🔥 Schedule Optimized! You are ready to crush this week!", icon="🚀")
+            st.balloons()
+            st.success("Optimization Successful! Here is your plan:")
 
         for task in result['scheduled_tasks']:
-            with st.expander(f"✅ {task['start_time'][11:16]} - {task['name']}", expanded=True):
-                st.write(f"**Time:** {task['start_time'].replace('T', ' ')} to {task['end_time'].replace('T', ' ')}")
+            with st.expander(f"✅ {task['start_time'].strftime('%H:%M')} - {task['name']}", expanded=True):
+                st.write(f"**Time:** {task['start_time'].strftime('%A, %d %b %Y %H:%M')} to {task['end_time'].strftime('%H:%M')}")
                 st.write(f"**Reasoning:** *{task['reason']}*")
+
+def add_task_to_session(name, duration, priority, deadline):
+    if "tasks" not in st.session_state:
+        st.session_state.tasks = []
+
+    # Store raw data in session
+    new_task = {
+        "id": str(len(st.session_state.tasks) + 1),
+        "name": name,
+        "duration_minutes": duration,
+        "priority": priority,
+        "deadline": deadline, # Keep as date object
+        "fixed_slot": None
+    }
+    st.session_state.tasks.append(new_task)
+
+def run_schedule_logic(start, end, weekends, strategy):
+    # 1. Convert Session Data to Pydantic Models
+    task_objects = []
+    for t in st.session_state.tasks:
+        # Convert deadline date to datetime
+        dt_deadline = datetime.combine(t['deadline'], time(23, 59))
+
+        task_objects.append(Task(
+            id=t['id'],
+            name=t['name'],
+            duration_minutes=t['duration_minutes'],
+            priority=TaskPriority(t['priority']),
+            deadline=dt_deadline
+        ))
+
+    prefs = UserPreferences(
+        start_time_hour=start,
+        end_time_hour=end,
+        include_weekends=weekends
+    )
+
+    # 2. Instantiate the Engine Directly (No API Call!)
+    engine = ScheduleEngine()
+    result = engine.generate_schedule(task_objects, prefs, method=strategy)
+
+    # 3. Calculate Stats
+    total_minutes = sum([t.duration_minutes for t in task_objects])
+
+    return {
+        "scheduled_tasks": result["scheduled"],
+        "unscheduled_tasks": result["unscheduled"],
+        "total_hours": total_minutes / 60.0,
+        "status": result["status"]
+    }
+
+if __name__ == "__main__":
+    main()
