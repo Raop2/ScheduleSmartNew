@@ -1,0 +1,10 @@
+fastapi
+uvicorn
+streamlit
+ortools
+pandas
+pydantic
+sqlalchemy
+pyinstaller
+pytest
+httpx
