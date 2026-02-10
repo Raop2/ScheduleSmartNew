@@ -24,6 +24,7 @@ class UserPreferences(BaseModel):
 class ScheduleRequest(BaseModel):
     tasks: List[Task]
     preferences: UserPreferences
+    strategy: str = Field("greedy", pattern="^(greedy|cpsat)$")
 
 class ScheduleResponse(BaseModel):
     scheduled_tasks: List[dict]

@@ -1,7 +1,7 @@
 import uvicorn
 from fastapi import FastAPI
 from app.backend.models import ScheduleRequest, ScheduleResponse
-from app.backend.scheduler import GreedyScheduler
+from app.backend.scheduler import ScheduleEngine
 
 app = FastAPI(title="ScheduleSmart", version="1.0.0")
 
@@ -11,10 +11,15 @@ def health_check():
 
 @app.post("/schedule", response_model=ScheduleResponse)
 def generate_schedule(request: ScheduleRequest):
-    scheduler = GreedyScheduler()
-    result = scheduler.schedule(request.tasks, request.preferences)
+    engine = ScheduleEngine()
 
-    # Calculate total hours for the report
+    # Dynamic Strategy Selection (Greedy vs CP-SAT)
+    result = engine.generate_schedule(
+        request.tasks,
+        request.preferences,
+        method=request.strategy
+    )
+
     total_minutes = sum([t.duration_minutes for t in request.tasks])
 
     return ScheduleResponse(
