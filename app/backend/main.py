@@ -1,3 +1,13 @@
+import sys
+import os
+from pathlib import Path
+
+# --- MAGIC PATH FIX ---
+# This tells Python: "The project root is 3 levels up, look there for the 'app' folder"
+# This fixes the "ModuleNotFoundError" when clicking the Green Arrow.
+root_path = Path(__file__).resolve().parent.parent.parent
+sys.path.append(str(root_path))
+
 import uvicorn
 from fastapi import FastAPI
 from app.backend.models import ScheduleRequest, ScheduleResponse
@@ -30,4 +40,5 @@ def generate_schedule(request: ScheduleRequest):
     )
 
 if __name__ == "__main__":
+    # This allows you to run it by clicking the Green Arrow
     uvicorn.run("app.backend.main:app", host="127.0.0.1", port=8000, reload=True)
