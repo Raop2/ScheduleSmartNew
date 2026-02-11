@@ -1,166 +1,101 @@
 from datetime import datetime, timedelta
-from typing import List, Dict
+from typing import List, Dict, Any
+from app.backend.models import Task, UserPreferences, TaskPriority
 from ortools.sat.python import cp_model
-from app.backend.models import Task, UserPreferences
 
 class ScheduleEngine:
-    def generate_schedule(self, tasks: List[Task], preferences: UserPreferences, method: str = "greedy") -> Dict:
-        if method == "cpsat":
-            return CPSATScheduler().schedule(tasks, preferences)
-        return GreedyScheduler().schedule(tasks, preferences)
+    def generate_schedule(self, tasks: List[Task], prefs: UserPreferences, method: str = "cpsat") -> Dict[str, Any]:
+        """
+        Main entry point. Routes to the correct solver.
+        """
+        if not tasks:
+            return {"scheduled": [], "unscheduled": [], "status": "empty"}
 
-class GreedyScheduler:
-    def schedule(self, tasks: List[Task], preferences: UserPreferences) -> Dict:
-        sorted_tasks = sorted(tasks, key=lambda t: (t.deadline if t.deadline else datetime.max, t.priority))
+        # Simply route everything to CP-SAT for now as it's the smartest
+        return self._solve_cpsat(tasks, prefs)
 
-        current_day = datetime.now().date()
-        if datetime.now().hour >= preferences.end_time_hour:
-            current_day += timedelta(days=1)
-
-        schedule_start = datetime.combine(current_day, datetime.min.time()).replace(hour=preferences.start_time_hour)
-
-        occupied_slots = []
-        scheduled_tasks = []
-        unscheduled_tasks = []
-
-        for task in sorted_tasks:
-            if task.fixed_slot:
-                scheduled_tasks.append({
-                    "task_id": task.id,
-                    "name": task.name,
-                    "start_time": task.fixed_slot,
-                    "end_time": task.fixed_slot + timedelta(minutes=task.duration_minutes),
-                    "reason": "Fixed commitment defined by user."
-                })
-                occupied_slots.append((task.fixed_slot, task.fixed_slot + timedelta(minutes=task.duration_minutes)))
-                continue
-
-            placed = False
-            search_time = schedule_start
-            days_searched = 0
-
-            while not placed and days_searched < 14:
-                if search_time.hour >= preferences.end_time_hour:
-                    search_time += timedelta(days=1)
-                    search_time = search_time.replace(hour=preferences.start_time_hour, minute=0)
-                    days_searched += 1
-                    continue
-
-                if not preferences.include_weekends and search_time.weekday() >= 5:
-                    search_time += timedelta(days=1)
-                    search_time = search_time.replace(hour=preferences.start_time_hour, minute=0)
-                    continue
-
-                potential_end = search_time + timedelta(minutes=task.duration_minutes)
-
-                is_conflict = False
-                for start, end in occupied_slots:
-                    if not (potential_end <= start or search_time >= end):
-                        is_conflict = True
-                        search_time = end
-                        break
-
-                if is_conflict:
-                    continue
-
-                if potential_end.hour > preferences.end_time_hour:
-                    search_time += timedelta(days=1)
-                    search_time = search_time.replace(hour=preferences.start_time_hour, minute=0)
-                    continue
-
-                if task.deadline and potential_end > task.deadline:
-                    unscheduled_tasks.append({
-                        "task_id": task.id,
-                        "reason": f"Deadline constraint {task.deadline} exceeded."
-                    })
-                    placed = True
-                    break
-
-                scheduled_tasks.append({
-                    "task_id": task.id,
-                    "name": task.name,
-                    "start_time": search_time,
-                    "end_time": potential_end,
-                    "reason": "Optimal slot found via Greedy Search."
-                })
-                occupied_slots.append((search_time, potential_end))
-                placed = True
-
-            if not placed and task.id not in [t["task_id"] for t in unscheduled_tasks]:
-                unscheduled_tasks.append({"task_id": task.id, "reason": "No suitable slot found in search horizon."})
-
-        return {
-            "scheduled": sorted(scheduled_tasks, key=lambda x: x["start_time"]),
-            "unscheduled": unscheduled_tasks,
-            "status": "completed"
-        }
-
-class CPSATScheduler:
-    def schedule(self, tasks: List[Task], preferences: UserPreferences) -> Dict:
+    def _solve_cpsat(self, tasks: List[Task], prefs: UserPreferences):
         model = cp_model.CpModel()
 
-        base_time = datetime.now().replace(minute=0, second=0, microsecond=0)
-        horizon_minutes = 14 * 24 * 60
+        # 1. Variables
+        # We map each task to an Interval Variable
+        task_intervals = {}
+        task_starts = {}
+        task_ends = {}
 
-        task_vars = {}
-        intervals = []
+        # Calculate day limits in minutes (e.g., 9:00 = 540)
+        day_start_min = prefs.start_time_hour * 60
+        day_end_min = prefs.end_time_hour * 60
+        day_length = day_end_min - day_start_min
 
-        for task in tasks:
-            start_var = model.NewIntVar(0, horizon_minutes, f'start_{task.id}')
-            end_var = model.NewIntVar(0, horizon_minutes, f'end_{task.id}')
-            interval_var = model.NewIntervalVar(start_var, task.duration_minutes, end_var, f'interval_{task.id}')
+        # Horizon: How far ahead do we look? (e.g., 5 days)
+        horizon_days = 5
+        horizon_min = horizon_days * 24 * 60
 
-            task_vars[task.id] = {
-                'start': start_var,
-                'end': end_var,
-                'interval': interval_var,
-                'task': task
-            }
-            intervals.append(interval_var)
+        for t in tasks:
+            # Start time variable (0 to Horizon)
+            start_var = model.NewIntVar(0, horizon_min, f"start_{t.id}")
+            end_var = model.NewIntVar(0, horizon_min, f"end_{t.id}")
 
-            if task.deadline:
-                minutes_to_deadline = int((task.deadline - base_time).total_seconds() / 60)
-                model.Add(end_var <= max(0, minutes_to_deadline))
+            # Interval variable (enforces start + duration = end)
+            interval_var = model.NewIntervalVar(
+                start_var, t.duration_minutes, end_var, f"interval_{t.id}"
+            )
 
-            if task.fixed_slot:
-                start_min = int((task.fixed_slot - base_time).total_seconds() / 60)
-                model.Add(start_var == start_min)
+            task_intervals[t.id] = interval_var
+            task_starts[t.id] = start_var
+            task_ends[t.id] = end_var
 
-        model.AddNoOverlap(intervals)
+        # 2. Constraint: No Overlap
+        model.AddNoOverlap(task_intervals.values())
 
-        if task_vars:
-            makespan = model.NewIntVar(0, horizon_minutes, 'makespan')
-            model.AddMaxEquality(makespan, [v['end'] for v in task_vars.values()])
-            model.Minimize(makespan)
+        # 3. Constraint: Work Hours Only (Simplified)
+        # Force tasks to start after day_start and end before day_end (modulo arithmetic logic is complex in CP-SAT)
+        # For this prototype, we will just use a simple linear timeline and assume user works continuously
+        # or we treat "Time 0" as "Start of Day 1".
 
+        # 4. Objective: Minimize Lateness & Maximize Priority
+        # (Simplified: Just schedule everything as early as possible)
+        makespan = model.NewIntVar(0, horizon_min, 'makespan')
+        model.AddMaxEquality(makespan, list(task_ends.values()))
+        model.Minimize(makespan)
+
+        # 5. Solve
         solver = cp_model.CpSolver()
+        solver.parameters.max_time_in_seconds = 5.0
         status = solver.Solve(model)
 
         scheduled_tasks = []
-        unscheduled_tasks = []
 
         if status in (cp_model.OPTIMAL, cp_model.FEASIBLE):
-            for t_id, vars in task_vars.items():
-                start_offset = solver.Value(vars['start'])
-                actual_start_time = base_time + timedelta(minutes=start_offset)
-                actual_end_time = actual_start_time + timedelta(minutes=vars['task'].duration_minutes)
+            base_date = datetime.now().date()
+            base_time = datetime.combine(base_date, datetime.min.time()) + timedelta(hours=prefs.start_time_hour)
 
-                reason = "Calculated by CP-SAT solver for maximum efficiency."
-                if not preferences.include_weekends and actual_start_time.weekday() >= 5:
-                    reason += " Weekend included to meet tight deadline."
+            for t in tasks:
+                start_val = solver.Value(task_starts[t.id])
+
+                # Convert "minutes from start" to real datetime
+                # (This is a simplified logic: assuming continuous time for the demo)
+                real_start = base_time + timedelta(minutes=start_val)
+                real_end = real_start + timedelta(minutes=t.duration_minutes)
 
                 scheduled_tasks.append({
-                    "task_id": t_id,
-                    "name": vars['task'].name,
-                    "start_time": actual_start_time,
-                    "end_time": actual_end_time,
-                    "reason": reason
+                    "id": t.id,  # <--- CRITICAL: RETURN THE ID!
+                    "name": t.name,
+                    "start_time": real_start,
+                    "end_time": real_end,
+                    "priority": t.priority.value if hasattr(t.priority, 'value') else "medium",
+                    "reason": "Optimized by AI"
                 })
-        else:
-            return {"scheduled": [], "unscheduled": [{"reason": "Model Infeasible"}], "status": "failed"}
 
-        return {
-            "scheduled": sorted(scheduled_tasks, key=lambda x: x["start_time"]),
-            "unscheduled": unscheduled_tasks,
-            "status": "optimized"
-        }
+            return {
+                "scheduled": scheduled_tasks,
+                "unscheduled": [],
+                "status": "success"
+            }
+        else:
+            return {
+                "scheduled": [],
+                "unscheduled": tasks,
+                "status": "failed"
+            }
