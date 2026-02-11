@@ -2,23 +2,28 @@ import sys
 import os
 from pathlib import Path
 
-# --- MAGIC PATH FIX (Required for Cloud & Local to find 'app') ---
-# This tells Python: "Start looking for files from the Project Root, not just this folder"
+# --- MAGIC PATH FIX ---
 root_path = Path(__file__).parent.parent.parent
 sys.path.append(str(root_path))
 
 import streamlit as st
 from datetime import datetime, date, time
 
-# --- DIRECT IMPORTS (Now they will work!) ---
+# --- DIRECT IMPORTS ---
 from app.backend.scheduler import ScheduleEngine
 from app.backend.models import Task, UserPreferences, TaskPriority
 
 st.set_page_config(page_title="ScheduleSmart", page_icon="📅", layout="wide")
 
+def clear_schedule():
+    """Reset the schedule when user changes settings"""
+    if "schedule_result" in st.session_state:
+        del st.session_state["schedule_result"]
+
 def main():
     st.title("📅 ScheduleSmart")
-    st.markdown("### Intelligent Study Planner | Dissertation Edition")
+    # FIX 1: Removed "Dissertation Edition"
+    st.markdown("### Intelligent Study Planner")
     st.markdown("---")
 
     # --- SIDEBAR CONFIGURATION ---
@@ -26,18 +31,20 @@ def main():
         st.header("⚙️ Configuration")
 
         st.subheader("Scheduling Engine")
+        # FIX 2: Added on_change=clear_schedule to wipe old results when switching
         strategy = st.selectbox(
             "Optimization Strategy",
             ("greedy", "cpsat"),
-            format_func=lambda x: "⚡ Greedy (Instant)" if x == "greedy" else "🧠 CP-SAT (AI Optimized)"
+            format_func=lambda x: "⚡ Greedy (Instant)" if x == "greedy" else "🧠 CP-SAT (AI Optimized)",
+            on_change=clear_schedule
         )
 
         st.divider()
 
         st.subheader("Preferences")
-        start_time = st.slider("Start Day At", 0, 23, 9)
-        end_time = st.slider("End Day At", 0, 23, 17)
-        include_weekends = st.checkbox("Include Weekends?", value=False)
+        start_time = st.slider("Start Day At", 0, 23, 9, on_change=clear_schedule)
+        end_time = st.slider("End Day At", 0, 23, 17, on_change=clear_schedule)
+        include_weekends = st.checkbox("Include Weekends?", value=False, on_change=clear_schedule)
 
     col1, col2 = st.columns([1, 2])
 
@@ -71,6 +78,11 @@ def main():
                     try:
                         result = run_schedule_logic(start_time, end_time, include_weekends, strategy)
                         st.session_state.schedule_result = result
+
+                        # FIX 3: Balloons ONLY happen here (inside the button click)
+                        if result['status'] != "failed" and len(result['scheduled_tasks']) > 0:
+                            st.balloons()
+
                     except Exception as e:
                         st.error(f"Optimization Failed: {e}")
         else:
@@ -90,9 +102,7 @@ def main():
             m1.metric("Total Study Hours", f"{result['total_hours']:.1f} hrs")
             m2.metric("Tasks Scheduled", len(result['scheduled_tasks']))
 
-            if len(result['scheduled_tasks']) > 0:
-                st.balloons()
-                st.success("Optimization Successful! Here is your plan:")
+            st.success("Optimization Successful! Here is your plan:")
 
             for task in result['scheduled_tasks']:
                 with st.expander(f"✅ {task['start_time'].strftime('%H:%M')} - {task['name']}", expanded=True):
@@ -118,8 +128,6 @@ def run_schedule_logic(start, end, weekends, strategy):
     task_objects = []
     for t in st.session_state.tasks:
         dt_deadline = datetime.combine(t['deadline'], time(23, 59))
-
-        # Determine priority Enum
         prio_map = {"high": TaskPriority.HIGH, "medium": TaskPriority.MEDIUM, "low": TaskPriority.LOW}
 
         task_objects.append(Task(
@@ -136,7 +144,6 @@ def run_schedule_logic(start, end, weekends, strategy):
         include_weekends=weekends
     )
 
-    # Instantiate the Engine Directly
     engine = ScheduleEngine()
     result = engine.generate_schedule(task_objects, prefs, method=strategy)
 
