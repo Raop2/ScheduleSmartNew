@@ -1,11 +1,6 @@
-fastapi
-uvicorn
 streamlit
+streamlit-option-menu
+streamlit-calendar
+ics
 ortools
 pandas
-pydantic
-sqlalchemy
-pyinstaller
-pytest
-httpx
-streamlit-calendar
