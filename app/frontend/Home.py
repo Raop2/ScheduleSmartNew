@@ -1,9 +1,9 @@
 import sys
 import time
+import random
 from pathlib import Path
 from datetime import date, datetime, time as dt_time, timedelta
 
-# Fix path
 root_path = Path(__file__).parent.parent.parent
 sys.path.append(str(root_path))
 
@@ -11,29 +11,27 @@ import streamlit as st
 from streamlit_option_menu import option_menu
 from streamlit_calendar import calendar
 
-# Backend Imports
 from app.backend.data_service import load_tasks, save_tasks
-from app.backend.scheduler import ScheduleEngine
-from app.backend.models import Task, UserPreferences, TaskPriority
 from app.backend.export_service import generate_ics_file
 
-# --- PAGE CONFIG ---
 st.set_page_config(page_title="ScheduleSmart Pro", page_icon="🎓", layout="wide")
 
-# --- PROFESSIONAL CSS (Cards & Shadow) ---
 st.markdown("""
 <style>
-    /* Hide default sidebar nav */
     [data-testid="stSidebarNav"] {display: none;}
     
-    /* Card Styling */
+    .stApp {
+        background: linear-gradient(180deg, #F0F2F6 0%, #FFFFFF 100%);
+    }
+
     .metric-card {
-        background-color: #ffffff;
+        background-color: rgba(255, 255, 255, 0.9);
         border-radius: 12px;
         padding: 20px;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
         text-align: center;
         margin-bottom: 20px;
+        border: 1px solid #eee;
     }
     .metric-value {
         font-size: 32px;
@@ -47,61 +45,63 @@ st.markdown("""
         margin-top: 5px;
     }
     
-    /* Clean Headers */
-    h1, h2, h3 { font-family: 'Helvetica Neue', sans-serif; }
+    h1, h2, h3 { font-family: 'Inter', 'Helvetica Neue', sans-serif; }
+    .stContainer { border-radius: 12px; border: 1px solid #f0f0f0; }
     
-    /* Task Card Styling */
-    .stContainer { border-radius: 10px; }
+    div[data-testid="stExpander"] details summary p {
+        font-weight: 600;
+    }
 </style>
 """, unsafe_allow_html=True)
 
 def main():
-    # 1. Load Data
     if "tasks" not in st.session_state:
         st.session_state.tasks = load_tasks()
 
-    # --- SIDEBAR NAVIGATION ---
     with st.sidebar:
         st.title("🎓 ScheduleSmart")
-        st.caption("Intelligent Study Planner")
+        st.caption("v3.1 | Intelligent Planner")
 
         selected = option_menu(
             menu_title=None,
-            options=["Dashboard", "Add Task", "Calendar", "AI Engine"],
-            icons=["house", "plus-circle", "calendar-event", "cpu"],
+            options=["Dashboard", "Add Task", "Calendar", "Study Plan AI"],
+            icons=["house", "plus-circle", "calendar-event", "robot"],
             default_index=0,
             styles={
-                "container": {"padding": "0!important", "background-color": "#f8f9fa"},
-                "nav-link": {"font-size": "14px", "text-align": "left", "margin": "5px", "--hover-color": "#eee"},
+                "container": {"padding": "0!important", "background-color": "transparent"},
+                "nav-link": {"font-size": "14px", "text-align": "left", "margin": "5px", "--hover-color": "#e0e0e0"},
                 "nav-link-selected": {"background-color": "#FF4B4B"},
             }
         )
         st.divider()
-        st.info("💡 **Pro Tip:** Use 'Exam Cram' mode during finals week.")
 
-    # --- ROUTING ---
     if selected == "Dashboard":
         render_dashboard()
     elif selected == "Add Task":
         render_add_task()
     elif selected == "Calendar":
         render_calendar()
-    elif selected == "AI Engine":
-        render_engine()
+    elif selected == "Study Plan AI":
+        render_study_ai()
 
-# ==========================================
-# 🏠 VIEW 1: THE DASHBOARD (Metric Cards)
-# ==========================================
 def render_dashboard():
     st.header("👋 My Dashboard")
 
-    # Calculate Metrics
     active_tasks = [t for t in st.session_state.tasks if not t.get('completed')]
-    overdue = [t for t in active_tasks if t['deadline'] < date.today()]
-    completed_count = len([t for t in st.session_state.tasks if t.get('completed')])
+    today_tasks = [t for t in active_tasks if t['deadline'] == date.today()]
 
-    # METRIC CARDS ROW
+    if today_tasks:
+        completed_today = len([t for t in st.session_state.tasks if t.get('completed') and t['deadline'] == date.today()])
+        total_today = len(today_tasks) + completed_today
+        progress = completed_today / total_today if total_today > 0 else 0
+        st.progress(progress, text=f"Daily Momentum: {int(progress*100)}%")
+    else:
+        st.info("No deadlines for today. You are free! 🎉")
+
     c1, c2, c3 = st.columns(3)
+
+    overdue = [t for t in active_tasks if t['deadline'] < date.today()]
+    completed_all = len([t for t in st.session_state.tasks if t.get('completed')])
 
     with c1:
         st.markdown(f"""
@@ -123,39 +123,33 @@ def render_dashboard():
     with c3:
         st.markdown(f"""
         <div class="metric-card">
-            <div class="metric-value" style="color: #28a745;">{completed_count}</div>
-            <div class="metric-label">✅ Tasks Completed</div>
+            <div class="metric-value" style="color: #28a745;">{completed_all}</div>
+            <div class="metric-label">✅ Lifetime Completed</div>
         </div>
         """, unsafe_allow_html=True)
 
-    st.markdown("### 📝 Your Task Queue")
+    st.subheader("📝 Your Queue")
 
     if not active_tasks:
-        st.info("You're all caught up! Go to 'Add Task' to create new work.")
+        st.success("All caught up! Go to 'Add Task' or 'Study Plan AI'.")
     else:
         for t in active_tasks:
             render_task_card(t)
 
-# ==========================================
-# ➕ VIEW 2: ADD TASK (Dedicated Page)
-# ==========================================
 def render_task_card(t):
     with st.container(border=True):
         c1, c2, c3, c4 = st.columns([0.5, 3, 1.5, 1])
 
-        # Priority Icon
         icon = "🔴" if t['priority'] == 'high' else "🟡" if t['priority'] == 'medium' else "🟢"
         c1.markdown(f"## {icon}")
 
-        # Details
         c2.markdown(f"**{t['name']}**")
-        if t.get('notes'): c2.caption(t['notes'])
+        if t.get('module'):
+            c2.caption(f"📘 {t['module']}")
 
-        # Meta
         c3.caption(f"⏱️ {t['duration_minutes']} min")
         c3.caption(f"📅 Due: {t['deadline'].strftime('%d %b')}")
 
-        # SUPERVISOR FEATURE: Fast Forward Focus
         if c4.button("▶️ Focus", key=f"focus_{t['id']}"):
             run_focus_mode(t['name'])
 
@@ -163,40 +157,43 @@ def render_task_card(t):
             mark_complete(t)
 
 def run_focus_mode(task_name):
-    """Simulates 1 hour of work in 10 seconds with motivational quotes."""
-    progress_text = "Starting Focus Session..."
+    progress_text = "Entering Flow State..."
     my_bar = st.progress(0, text=progress_text)
 
     quotes = [
-        "🔒 Locking in...",
-        "🚀 You are making progress!",
-        "🧠 Deep work mode activated...",
-        "🔥 Don't stop now!",
-        "✨ Almost there..."
+        "💧 Hydration Check! Take a sip of water.",
+        "🪑 Posture Check! Sit up straight.",
+        "🧠 Locking in...",
+        "🚀 You are crushing this!",
+        "👀 Eyes on the prize.",
+        "🔥 Keep the momentum going.",
+        "✨ One step at a time.",
+        "🛑 Put the phone away.",
+        "💪 You got this!",
+        "🌬️ Take a deep breath.",
+        "📚 Knowledge is power.",
+        "⚡ Laser focus activated."
     ]
 
     for percent_complete in range(100):
-        time.sleep(0.05) # Speed of simulation
+        time.sleep(0.05)
         my_bar.progress(percent_complete + 1, text=f"Focusing on: {task_name}")
 
-        if percent_complete % 20 == 0:
-            quote_idx = (percent_complete // 20) % len(quotes)
-            st.toast(quotes[quote_idx], icon="💪")
+        if percent_complete % 15 == 0:
+            st.toast(random.choice(quotes), icon=random.choice(["💧", "🪑", "🚀", "🔥", "✨", "💪"]))
 
     st.balloons()
-    st.success(f"✅ Focus Session Complete: {task_name}")
+    st.success(f"✅ Session Complete: {task_name}")
     time.sleep(2)
     st.rerun()
 
 def mark_complete(task):
-    if 'completed' not in task: task['completed'] = True
-    else: task['completed'] = True
+    task['completed'] = True
     save_tasks(st.session_state.tasks)
     st.rerun()
 
 def render_add_task():
     st.header("➕ Add New Assignment")
-    st.caption("Break down your workload into manageable chunks.")
 
     with st.container(border=True):
         with st.form("add_task_form"):
@@ -204,17 +201,42 @@ def render_add_task():
 
             c1, c2 = st.columns(2)
             prio = c1.selectbox("Priority Level", ["High", "Medium", "Low"])
-            module = c2.text_input("Module / Subject", placeholder="e.g. CS101")
+            module = c2.text_input("Module / Subject", placeholder="e.g. Computer Science")
 
             c3, c4 = st.columns(2)
             duration = c3.number_input("Est. Duration (mins)", 15, 300, 60, step=15)
             due = c4.date_input("Deadline", min_value=date.today())
 
-            notes = st.text_area("Notes & Resources", placeholder="Paste links or requirements here...", height=100)
+            st.markdown("---")
+            st.markdown("**Optional: Schedule It Now**")
+
+            c_date, c_start, c_end = st.columns(3)
+            sched_date = c_date.date_input("Scheduled Date", value=date.today())
+            manual_start = c_start.time_input("Start Time (Optional)", value=None)
+            manual_end = c_end.time_input("End Time (Optional)", value=None)
+
+            notes = st.text_area("Notes", placeholder="Requirements...", height=100)
 
             if st.form_submit_button("Add to Queue", type="primary"):
+                final_start = None
+                final_end = None
+
+                if manual_start and manual_end:
+                    final_start = datetime.combine(sched_date, manual_start).isoformat()
+                    final_end = datetime.combine(sched_date, manual_end).isoformat()
+
+                    # Basic Conflict Check
+                    for t in st.session_state.tasks:
+                        if t.get('start_time') and not t.get('completed'):
+                            existing_start = datetime.fromisoformat(t['start_time'])
+                            existing_end = datetime.fromisoformat(t['end_time'])
+                            new_s = datetime.fromisoformat(final_start)
+
+                            if existing_start <= new_s < existing_end:
+                                st.warning(f"⚠️ Warning: Overlaps with '{t['name']}'")
+
                 new_task = {
-                    "id": str(int(time.time())), # Unique ID based on time
+                    "id": str(int(time.time())),
                     "name": name,
                     "duration_minutes": duration,
                     "priority": prio.lower(),
@@ -222,50 +244,48 @@ def render_add_task():
                     "notes": notes,
                     "module": module,
                     "completed": False,
-                    "fixed_slot": None,
-                    "start_time": None
+                    "start_time": final_start,
+                    "end_time": final_end
                 }
                 st.session_state.tasks.append(new_task)
                 save_tasks(st.session_state.tasks)
-                st.success(f"Added '{name}' to your dashboard!")
+                st.success(f"Added '{name}' successfully!")
                 time.sleep(1)
                 st.rerun()
 
-# ==========================================
-# 📅 VIEW 3: CALENDAR (With Export)
-# ==========================================
 def render_calendar():
     st.header("📅 Study Schedule")
 
     scheduled_tasks = [t for t in st.session_state.tasks if t.get('start_time') and not t.get('completed')]
 
     if not scheduled_tasks:
-        st.warning("⚠️ No schedule generated yet. Go to 'AI Engine' to build your plan!")
+        st.warning("⚠️ No schedule generated yet.")
         return
 
-    # EXPORT BUTTON
     c1, c2 = st.columns([3, 1])
     with c2:
         ics_data = generate_ics_file(scheduled_tasks)
         st.download_button(
-            label="📥 Export to Outlook (.ics)",
+            label="📥 Export to Outlook",
             data=ics_data,
-            file_name="schedulesmart_plan.ics",
+            file_name="plan.ics",
             mime="text/calendar",
             use_container_width=True
         )
 
-    # CALENDAR RENDER
+    module_colors = {
+        "Math": "#3788d8", "CS": "#7b1fa2", "History": "#d84315",
+        "Biology": "#2e7d32", "Break": "#607d8b", "General": "#1f77b4"
+    }
+
     calendar_events = []
     for t in scheduled_tasks:
-        color = "#FF4B4B" if t['priority'] == 'high' else "#FFA500" if t['priority'] == 'medium' else "#3DD56D"
+        mod = t.get('module', 'General')
+        color = module_colors.get(mod, "#1f77b4")
+        if t['name'] == "☕ Smart Break": color = "#9e9e9e"
 
-        # Safe conversion
-        start_t = t['start_time']
-        if isinstance(start_t, str): start_t = datetime.fromisoformat(start_t)
-
-        end_t = t['end_time']
-        if isinstance(end_t, str): end_t = datetime.fromisoformat(end_t)
+        start_t = datetime.fromisoformat(t['start_time'])
+        end_t = datetime.fromisoformat(t['end_time'])
 
         calendar_events.append({
             "title": t['name'],
@@ -285,75 +305,97 @@ def render_calendar():
     }
     calendar(events=calendar_events, options=calendar_options)
 
-# ==========================================
-# ⚙️ VIEW 4: AI ENGINE (Professional Modes)
-# ==========================================
-def render_engine():
-    st.header("⚙️ Optimization Engine")
+def render_study_ai():
+    st.header("🤖 AI Study Plan Generator")
 
     c1, c2 = st.columns([1, 2])
 
     with c1:
-        st.markdown("### 1. Strategy")
+        st.markdown("### 1. Define Goal")
         with st.container(border=True):
-            # PROFESSIONAL MODES
-            mode = st.selectbox(
-                "Select Strategy",
-                ["Balanced Revision ⚖️", "Exam Cram 📚", "Deadline Critical 🚨"]
-            )
+            goal = st.text_input("What do you want to learn?", placeholder="e.g. Python Basics")
 
-            if mode == "Exam Cram 📚":
-                st.caption("⚠️ Compresses breaks, extends day to 10 PM.")
-                def_start, def_end = 8, 22
-            elif mode == "Deadline Critical 🚨":
-                st.caption("⚠️ Prioritizes soonest deadlines over everything.")
-                def_start, def_end = 9, 20
-            else:
-                st.caption("✅ Standard study hours with breaks.")
-                def_start, def_end = 9, 17
+            d1, d2 = st.columns(2)
+            start_d = d1.date_input("Start Date", value=date.today())
+            end_d = d2.date_input("End Date", value=date.today() + timedelta(days=5))
 
-            st.divider()
-
-            start_h = st.slider("Start Day", 6, 12, def_start)
-            end_h = st.slider("End Day", 14, 23, def_end)
-            weekends = st.checkbox("Include Weekends", value=(mode == "Exam Cram 📚"))
+            rhythm = st.selectbox("Study Rhythm", ["9-to-5 Mode 🏢", "Night Owl 🌙", "All Day Grind 🔥"])
+            smart_breaks = st.checkbox("Add Smart Breaks? ☕", value=True)
 
     with c2:
-        st.markdown("### 2. Execute")
+        st.markdown("### 2. Generate Plan")
         with st.container(border=True):
-            st.info(f"Ready to generate schedule using **{mode}** logic.")
-
-            if st.button("✨ Generate Optimized Schedule", type="primary", use_container_width=True):
-                with st.spinner("Analyzing constraints & priorities..."):
-                    # PREPARE DATA
-                    task_objects = []
-                    active_tasks = [t for t in st.session_state.tasks if not t.get('completed')]
-
-                    for t in active_tasks:
-                        prio_map = {"high": TaskPriority.HIGH, "medium": TaskPriority.MEDIUM, "low": TaskPriority.LOW}
-                        dt_deadline = datetime.combine(t['deadline'], dt_time(23, 59))
-                        task_objects.append(Task(
-                            id=t['id'], name=t['name'], duration_minutes=t['duration_minutes'],
-                            priority=prio_map[t['priority']], deadline=dt_deadline
-                        ))
-
-                    # RUN ENGINE
-                    prefs = UserPreferences(start_time_hour=start_h, end_time_hour=end_h, include_weekends=weekends)
-                    engine = ScheduleEngine()
-                    result = engine.generate_schedule(task_objects, prefs)
-
-                    # SAVE RESULTS
-                    if result['status'] == 'success':
-                        for scheduled_t in result['scheduled']:
-                            for original_t in st.session_state.tasks:
-                                if original_t['id'] == scheduled_t['id']:
-                                    original_t['start_time'] = scheduled_t['start_time'].isoformat()
-                                    original_t['end_time'] = scheduled_t['end_time'].isoformat()
-                        save_tasks(st.session_state.tasks)
-                        st.success("Optimization Complete! View the Calendar tab.")
+            if st.button("✨ Generate Study Plan", type="primary", use_container_width=True):
+                if not goal:
+                    st.error("Please enter a learning goal first.")
+                else:
+                    with st.spinner(f"Breaking down '{goal}' into a { (end_d - start_d).days + 1 } day plan..."):
+                        generate_ai_plan(goal, start_d, end_d, rhythm, smart_breaks)
                         st.balloons()
-                    else:
-                        st.error("Optimization Failed. Try extending your work hours.")
+                        st.success("Plan Generated! Check the Calendar.")
+
+def generate_ai_plan(goal, start_date, end_date, rhythm, smart_breaks):
+    total_days = (end_date - start_date).days + 1
+    if total_days < 1: total_days = 1
+
+    base_tasks = [
+        f"Review {goal} Syllabus", f"Watch {goal} Intro", f"Read Chapter 1",
+        f"Practice Set A", f"Read Chapter 2", f"Practice Set B",
+        f"Mid-Topic Review", f"Solve Past Papers", f"Final Mock Exam"
+    ]
+
+    start_hour = 9
+    if "Night Owl" in rhythm: start_hour = 18
+    if "All Day" in rhythm: start_hour = 8
+
+    # Distribute tasks across days
+    tasks_per_day = max(1, len(base_tasks) // total_days)
+
+    task_idx = 0
+    for day_offset in range(total_days):
+        current_date = start_date + timedelta(days=day_offset)
+        current_time = datetime.combine(current_date, dt_time(start_hour, 0))
+
+        # Schedule tasks for this day
+        for _ in range(tasks_per_day):
+            if task_idx >= len(base_tasks): break
+
+            task_name = base_tasks[task_idx]
+            end_time = current_time + timedelta(minutes=60)
+
+            new_task = {
+                "id": str(int(time.time()) + task_idx),
+                "name": task_name,
+                "duration_minutes": 60,
+                "priority": "high" if task_idx % 2 == 0 else "medium",
+                "deadline": end_date,
+                "notes": "Generated by AI",
+                "module": goal,
+                "completed": False,
+                "start_time": current_time.isoformat(),
+                "end_time": end_time.isoformat()
+            }
+            st.session_state.tasks.append(new_task)
+            current_time = end_time
+            task_idx += 1
+
+            if smart_breaks:
+                break_end = current_time + timedelta(minutes=15)
+                break_task = {
+                    "id": str(int(time.time()) + 500 + task_idx),
+                    "name": "☕ Smart Break",
+                    "duration_minutes": 15,
+                    "priority": "low",
+                    "deadline": end_date,
+                    "module": "Break",
+                    "completed": False,
+                    "start_time": current_time.isoformat(),
+                    "end_time": break_end.isoformat()
+                }
+                st.session_state.tasks.append(break_task)
+                current_time = break_end
+
+    save_tasks(st.session_state.tasks)
 
 if __name__ == "__main__":
     main()
