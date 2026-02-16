@@ -4,6 +4,7 @@ import random
 from pathlib import Path
 from datetime import date, datetime, time as dt_time, timedelta
 
+# --- MAGIC PATH FIX ---
 root_path = Path(__file__).parent.parent.parent
 sys.path.append(str(root_path))
 
@@ -11,19 +12,25 @@ import streamlit as st
 from streamlit_option_menu import option_menu
 from streamlit_calendar import calendar
 
+# Backend Imports
 from app.backend.data_service import load_tasks, save_tasks
 from app.backend.export_service import generate_ics_file
 
+# --- PAGE CONFIG ---
 st.set_page_config(page_title="ScheduleSmart Pro", page_icon="🎓", layout="wide")
 
+# --- PROFESSIONAL CSS ---
 st.markdown("""
 <style>
+    /* Hide default sidebar nav */
     [data-testid="stSidebarNav"] {display: none;}
     
+    /* SaaS Gradient Background */
     .stApp {
         background: linear-gradient(180deg, #F0F2F6 0%, #FFFFFF 100%);
     }
 
+    /* Metric Card Styling */
     .metric-card {
         background-color: rgba(255, 255, 255, 0.9);
         border-radius: 12px;
@@ -45,9 +52,13 @@ st.markdown("""
         margin-top: 5px;
     }
     
+    /* Clean Fonts */
     h1, h2, h3 { font-family: 'Inter', 'Helvetica Neue', sans-serif; }
+    
+    /* Card Container */
     .stContainer { border-radius: 12px; border: 1px solid #f0f0f0; }
     
+    /* Bold Expander Text */
     div[data-testid="stExpander"] details summary p {
         font-weight: 600;
     }
@@ -55,9 +66,11 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 def main():
+    # 1. Load Data
     if "tasks" not in st.session_state:
         st.session_state.tasks = load_tasks()
 
+    # --- SIDEBAR NAVIGATION ---
     with st.sidebar:
         st.title("🎓 ScheduleSmart")
         st.caption("v3.1 | Intelligent Planner")
@@ -75,6 +88,7 @@ def main():
         )
         st.divider()
 
+    # --- ROUTING ---
     if selected == "Dashboard":
         render_dashboard()
     elif selected == "Add Task":
@@ -84,12 +98,16 @@ def main():
     elif selected == "Study Plan AI":
         render_study_ai()
 
+# ==========================================
+# 🏠 VIEW 1: THE DASHBOARD
+# ==========================================
 def render_dashboard():
     st.header("👋 My Dashboard")
 
     active_tasks = [t for t in st.session_state.tasks if not t.get('completed')]
     today_tasks = [t for t in active_tasks if t['deadline'] == date.today()]
 
+    # Daily Momentum Bar
     if today_tasks:
         completed_today = len([t for t in st.session_state.tasks if t.get('completed') and t['deadline'] == date.today()])
         total_today = len(today_tasks) + completed_today
@@ -98,6 +116,7 @@ def render_dashboard():
     else:
         st.info("No deadlines for today. You are free! 🎉")
 
+    # Metrics
     c1, c2, c3 = st.columns(3)
 
     overdue = [t for t in active_tasks if t['deadline'] < date.today()]
@@ -136,26 +155,37 @@ def render_dashboard():
         for t in active_tasks:
             render_task_card(t)
 
+# ==========================================
+# 🧩 HELPER: TASK CARD
+# ==========================================
 def render_task_card(t):
     with st.container(border=True):
         c1, c2, c3, c4 = st.columns([0.5, 3, 1.5, 1])
 
+        # Priority Icon
         icon = "🔴" if t['priority'] == 'high' else "🟡" if t['priority'] == 'medium' else "🟢"
         c1.markdown(f"## {icon}")
 
+        # Details
         c2.markdown(f"**{t['name']}**")
         if t.get('module'):
             c2.caption(f"📘 {t['module']}")
 
+        # Meta
         c3.caption(f"⏱️ {t['duration_minutes']} min")
         c3.caption(f"📅 Due: {t['deadline'].strftime('%d %b')}")
 
+        # Focus Button
         if c4.button("▶️ Focus", key=f"focus_{t['id']}"):
             run_focus_mode(t['name'])
 
+        # Done Button
         if c4.button("Done", key=f"done_{t['id']}"):
             mark_complete(t)
 
+# ==========================================
+# 🧘 HELPER: FOCUS MODE
+# ==========================================
 def run_focus_mode(task_name):
     progress_text = "Entering Flow State..."
     my_bar = st.progress(0, text=progress_text)
@@ -192,6 +222,9 @@ def mark_complete(task):
     save_tasks(st.session_state.tasks)
     st.rerun()
 
+# ==========================================
+# ➕ VIEW 2: ADD TASK (With Future Scheduling)
+# ==========================================
 def render_add_task():
     st.header("➕ Add New Assignment")
 
@@ -221,6 +254,7 @@ def render_add_task():
                 final_start = None
                 final_end = None
 
+                # Logic: If times are picked, create the ISO strings
                 if manual_start and manual_end:
                     final_start = datetime.combine(sched_date, manual_start).isoformat()
                     final_end = datetime.combine(sched_date, manual_end).isoformat()
@@ -228,8 +262,13 @@ def render_add_task():
                     # Basic Conflict Check
                     for t in st.session_state.tasks:
                         if t.get('start_time') and not t.get('completed'):
-                            existing_start = datetime.fromisoformat(t['start_time'])
-                            existing_end = datetime.fromisoformat(t['end_time'])
+                            # Safely handle string vs datetime
+                            existing_start = t['start_time']
+                            if isinstance(existing_start, str): existing_start = datetime.fromisoformat(existing_start)
+
+                            existing_end = t['end_time']
+                            if isinstance(existing_end, str): existing_end = datetime.fromisoformat(existing_end)
+
                             new_s = datetime.fromisoformat(final_start)
 
                             if existing_start <= new_s < existing_end:
@@ -253,6 +292,9 @@ def render_add_task():
                 time.sleep(1)
                 st.rerun()
 
+# ==========================================
+# 📅 VIEW 3: CALENDAR (FIXED!)
+# ==========================================
 def render_calendar():
     st.header("📅 Study Schedule")
 
@@ -262,6 +304,7 @@ def render_calendar():
         st.warning("⚠️ No schedule generated yet.")
         return
 
+    # Export Button
     c1, c2 = st.columns([3, 1])
     with c2:
         ics_data = generate_ics_file(scheduled_tasks)
@@ -273,6 +316,7 @@ def render_calendar():
             use_container_width=True
         )
 
+    # Color Map
     module_colors = {
         "Math": "#3788d8", "CS": "#7b1fa2", "History": "#d84315",
         "Biology": "#2e7d32", "Break": "#607d8b", "General": "#1f77b4"
@@ -284,8 +328,20 @@ def render_calendar():
         color = module_colors.get(mod, "#1f77b4")
         if t['name'] == "☕ Smart Break": color = "#9e9e9e"
 
-        start_t = datetime.fromisoformat(t['start_time'])
-        end_t = datetime.fromisoformat(t['end_time'])
+        # --- FIX IS HERE: Robust Date Handling ---
+        # Checks if it's ALREADY a datetime object. If so, uses it. If string, converts it.
+        start_raw = t['start_time']
+        if isinstance(start_raw, str):
+            start_t = datetime.fromisoformat(start_raw)
+        else:
+            start_t = start_raw
+
+        end_raw = t['end_time']
+        if isinstance(end_raw, str):
+            end_t = datetime.fromisoformat(end_raw)
+        else:
+            end_t = end_raw
+        # -----------------------------------------
 
         calendar_events.append({
             "title": t['name'],
@@ -305,6 +361,9 @@ def render_calendar():
     }
     calendar(events=calendar_events, options=calendar_options)
 
+# ==========================================
+# 🤖 VIEW 4: AI STUDY PLANNER (With Date Ranges)
+# ==========================================
 def render_study_ai():
     st.header("🤖 AI Study Plan Generator")
 
