@@ -2,5 +2,6 @@ streamlit
 streamlit-option-menu
 streamlit-calendar
 ics
+tatsu==4.4.0
 ortools
 pandas
