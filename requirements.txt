@@ -4,3 +4,4 @@ streamlit-calendar
 icalendar
 ortools
 pandas
+matplotlib
