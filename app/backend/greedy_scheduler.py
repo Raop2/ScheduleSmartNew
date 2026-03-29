@@ -38,18 +38,23 @@ def generate_greedy_schedule(tasks, start_date, days_to_schedule, day_start, day
 
         pref_start, pref_end = parse_time_window(task.get('preferred_time', 'Any'), day_start, day_end)
 
+        is_habit = task.get('notes') == 'AI Generated Habit'
+        target_date_str = task.get('deadline')
+
         for attempt in range(2):
-            if task_placed:
-                break
+            if task_placed: break
 
             for day_offset in range(days_to_schedule):
-                if task_placed:
-                    break
+                if task_placed: break
+
+                current_date = start_date + timedelta(days=day_offset)
+
+                # STRICT DAY LOCK: If this is an AI Habit, it CANNOT be scheduled on the wrong day.
+                if is_habit and target_date_str and current_date.isoformat() != target_date_str:
+                    continue
 
                 if daily_booked_minutes[day_offset] + duration > max_mins_per_day:
                     continue
-
-                current_date = start_date + timedelta(days=day_offset)
 
                 search_start_hour = pref_start if attempt == 0 else day_start
                 search_end_hour = pref_end if attempt == 0 else day_end

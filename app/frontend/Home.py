@@ -4,7 +4,7 @@ import time
 import uuid
 import pandas as pd
 import matplotlib.pyplot as plt
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, time as dt_time
 from pathlib import Path
 
 # --- Path Setup ---
@@ -24,19 +24,14 @@ from app.backend.explanation import generate_schedule_summary, compare_explanati
 from app.backend.export_service import generate_ics_file
 
 # --- Page Config & CSS ---
-st.set_page_config(page_title="ScheduleSmart V2", page_icon=":material/calendar_today:", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="ScheduleSmart V2", page_icon=":material/calendar_month:", layout="wide", initial_sidebar_state="expanded")
 
-# --- CUSTOM CSS FOR PASTEL/GLASS AESTHETIC ---
 st.markdown("""
 <style>
-    /* Hide default Streamlit sidebar nav */
     [data-testid="stSidebarNav"] {display: none;}
-    
-    /* Global Typography & Light Background */
     html, body, [class*="css"] { font-family: 'Inter', 'Segoe UI', sans-serif; }
     .stApp { background-color: #F8FAFC; color: #1E293B; }
     
-    /* Metric Cards (Floating White Cards) */
     .metric-card {
         background-color: #FFFFFF; border-radius: 20px; padding: 24px;
         box-shadow: 0 10px 25px rgba(0, 0, 0, 0.03); border: 1px solid #F1F5F9; text-align: center;
@@ -46,15 +41,12 @@ st.markdown("""
     .metric-value { font-size: 42px; font-weight: 800; color: #0F172A; margin-bottom: 4px; letter-spacing: -1px; }
     .metric-label { font-size: 13px; font-weight: 600; color: #64748B; text-transform: uppercase; letter-spacing: 1.5px; }
     
-    /* Banners */
     .streak-banner { background: linear-gradient(135deg, #A78BFA 0%, #C4B5FD 100%); color: #4C1D95; padding: 16px; border-radius: 16px; margin-bottom: 24px; font-weight: 800; text-align: center; text-transform: uppercase; box-shadow: 0 4px 12px rgba(167, 139, 250, 0.2); }
     .recovery-banner { background-color: #FECACA; color: #7F1D1D; padding: 16px; border-radius: 16px; margin-bottom: 24px; font-weight: 700; text-align: center; }
     .suggestion-box { background-color: #FFFFFF; border-left: 4px solid #3B82F6; padding: 20px; border-radius: 12px; margin-top: 24px; color: #334155; box-shadow: 0 4px 12px rgba(0,0,0,0.02); }
     
-    /* Expanders */
     div[data-testid="stExpander"] { background-color: #FFFFFF !important; border: 1px solid #E2E8F0 !important; border-radius: 12px !important; box-shadow: 0 2px 8px rgba(0,0,0,0.02); }
     
-    /* --- THE PREMIUM CALENDAR REDESIGN --- */
     .fc { background-color: #FFFFFF; padding: 24px; border-radius: 24px; box-shadow: 0 10px 40px rgba(0,0,0,0.04); border: none; font-family: 'Inter', sans-serif; }
     .fc-theme-standard td, .fc-theme-standard th { border-color: #F1F5F9 !important; }
     .fc-col-header-cell { padding: 12px 0 !important; border-bottom: 2px solid #F1F5F9 !important; }
@@ -62,6 +54,7 @@ st.markdown("""
     .fc-timegrid-axis-cushion { color: #94A3B8 !important; font-size: 12px !important; }
     .fc-header-toolbar { margin-bottom: 24px !important; }
     .fc-toolbar-title { color: #0F172A !important; font-weight: 800 !important; font-size: 1.5em !important; }
+    
     .fc-button-primary { 
         background-color: #FFFFFF !important; color: #475569 !important; 
         border: 1px solid #E2E8F0 !important; border-radius: 20px !important; 
@@ -70,14 +63,20 @@ st.markdown("""
     }
     .fc-button-primary:hover { background-color: #F8FAFC !important; border-color: #CBD5E1 !important; }
     .fc-button-active { background-color: #0F172A !important; color: #FFFFFF !important; border-color: #0F172A !important; }
+    
     .fc-event { 
-        border-radius: 12px !important; border: none !important; padding: 6px !important; 
+        border-radius: 8px !important; border: none !important; padding: 4px 6px !important; 
         font-weight: 600 !important; font-size: 0.85em !important; 
         box-shadow: 0 4px 10px rgba(0,0,0,0.05) !important; cursor: pointer;
         transition: transform 0.1s;
     }
+    .fc-event-main {
+        white-space: normal !important; 
+        word-wrap: break-word !important;
+        line-height: 1.2 !important;
+    }
     .fc-event:hover { transform: scale(1.02); }
-    .fc-timegrid-slot { height: 3.5em !important; } 
+    .fc-timegrid-slot { height: 4.5em !important; } 
     .fc-day-today { background-color: #F8FAFC !important; } 
 </style>
 """, unsafe_allow_html=True)
@@ -90,7 +89,7 @@ def main():
         if logo_path.exists(): st.image(str(logo_path), width=180)
 
         st.markdown("<h3 style='color: #0F172A; font-weight: 800;'>ScheduleSmart V2</h3>", unsafe_allow_html=True)
-        st.caption(datetime.now().strftime("%A, %B %d, %Y"))
+        st.caption(datetime.now().strftime("%A, %d %B %Y"))
 
         selected = option_menu(
             menu_title=None,
@@ -108,7 +107,7 @@ def main():
         streak_count = get_streak()
         if streak_count > 0:
             st.markdown("---")
-            st.markdown(f"<div style='text-align: center;'><h1 style='color: #8B5CF6; margin: 0; font-size: 48px;'>:material/local_fire_department: {streak_count}</h1><p style='color: #64748B; font-weight: 700; text-transform: uppercase; letter-spacing: 1px;'>Day Streak</p></div>", unsafe_allow_html=True)
+            st.markdown(f"<div style='text-align: center;'><h1 style='color: #8B5CF6; margin: 0; font-size: 48px;'>🔥 {streak_count}</h1><p style='color: #64748B; font-weight: 700; text-transform: uppercase; letter-spacing: 1px;'>Day Streak</p></div>", unsafe_allow_html=True)
 
     if selected == "Dashboard": render_dashboard()
     elif selected == "Add Task": render_add_task()
@@ -117,6 +116,34 @@ def main():
     elif selected == "Focus Mode": render_focus_mode()
     elif selected == "Stats": render_stats()
     elif selected == "Settings": render_settings()
+
+# ==========================================
+# HELPER FUNCTIONS (Moved to top to prevent NameErrors)
+# ==========================================
+def insert_task(name, mod, prio, dur, dead, pref, fix, st_t, en_t, note):
+    conn = get_connection()
+    c = conn.cursor()
+    c.execute("INSERT INTO tasks (id, name, module, priority, duration, deadline, preferred_time, is_fixed, start_time, end_time, completed, notes) VALUES (?,?,?,?,?,?,?,?,?,?,0,?)",
+              (str(uuid.uuid4()), name, mod, prio, dur, dead, pref, fix, st_t, en_t, note))
+    conn.commit()
+    conn.close()
+
+def apply_schedule_with_breaks(scheduled_tasks, break_mins):
+    conn = get_connection()
+    c = conn.cursor()
+    c.execute("DELETE FROM tasks WHERE module = 'Break'")
+
+    for task in scheduled_tasks:
+        if task.get('start_time'):
+            c.execute("UPDATE tasks SET start_time = ?, end_time = ? WHERE id = ?", (task['start_time'], task['end_time'], task['id']))
+            if not task.get('is_fixed') and break_mins > 0:
+                end_time = datetime.fromisoformat(task['end_time'])
+                break_end = end_time + timedelta(minutes=break_mins)
+                c.execute("INSERT INTO tasks (id, name, module, priority, duration, is_fixed, start_time, end_time, completed) VALUES (?,?,?,?,?,?,?,?,0)",
+                          (str(uuid.uuid4()), "Break", "Break", "Low", break_mins, 1, end_time.isoformat(), break_end.isoformat()))
+
+    conn.commit()
+    conn.close()
 
 # ==========================================
 # VIEW 1: DASHBOARD
@@ -136,11 +163,11 @@ def render_dashboard():
 
     streak_count = get_streak()
     if streak_count >= 3:
-        st.markdown(f"<div class='streak-banner'>:material/local_fire_department: {get_streak_message(streak_count)}</div>", unsafe_allow_html=True)
+        st.markdown(f"<div class='streak-banner'>🔥 {get_streak_message(streak_count)}</div>", unsafe_allow_html=True)
 
     overdue_tasks = [t for t in pending_tasks if t['deadline'] and t['deadline'] < today_str]
     if overdue_tasks:
-        st.markdown(f"<div class='recovery-banner'>:material/warning: You have {len(overdue_tasks)} overdue tasks. {get_recovery_message()}</div>", unsafe_allow_html=True)
+        st.markdown(f"<div class='recovery-banner'>⚠️ You have {len(overdue_tasks)} overdue tasks. {get_recovery_message()}</div>", unsafe_allow_html=True)
 
     c1, c2, c3, c4 = st.columns(4)
     today_due = len([t for t in pending_tasks if t['deadline'] == today_str or (t['start_time'] and t['start_time'].startswith(today_str))])
@@ -156,11 +183,13 @@ def render_dashboard():
     else:
         sorted_tasks = sorted(pending_tasks, key=lambda x: (x['start_time'] or x['deadline'] or '9999-12-31'))
         for t in sorted_tasks[:5]:
-            with st.expander(f"**{t['name']}** ({t['module']})"):
+            with st.expander(f"{t['name']} ({t['module']})"):
                 col1, col2 = st.columns([3, 1])
                 with col1:
                     if t['start_time']: st.caption(f":material/schedule: Scheduled: {t['start_time'][11:16]}")
-                    if t['deadline']: st.caption(f":material/event: Deadline: {t['deadline']}")
+                    if t['deadline']:
+                        uk_deadline = datetime.fromisoformat(t['deadline']).strftime('%d/%m/%Y')
+                        st.caption(f":material/event: Deadline: {uk_deadline}")
                     if t['notes']: st.info(t['notes'])
                 with col2:
                     if st.button(":material/check_circle: Complete", key=f"d_{t['id']}", use_container_width=True):
@@ -169,17 +198,17 @@ def render_dashboard():
                         time.sleep(1)
                         st.rerun()
 
-    st.markdown(f"<div class='suggestion-box'>:material/lightbulb: <strong>Smart Suggestion:</strong> {get_smart_suggestion()}</div>", unsafe_allow_html=True)
+    st.markdown(f"<div class='suggestion-box'>💡 <strong>Smart Suggestion:</strong> {get_smart_suggestion()}</div>", unsafe_allow_html=True)
 
 # ==========================================
 # VIEW 2: ADD TASK
 # ==========================================
 def render_add_task():
     st.markdown("<h1 style='color: #0F172A;'>Add to Planner</h1>", unsafe_allow_html=True)
-    tab1, tab2, tab3, tab4 = st.tabs(["Assignment", "Class", "Exam", "Personal"])
+    tab1, tab2, tab3, tab4 = st.tabs([":material/assignment: Assignment", ":material/school: Class", ":material/history_edu: Exam", ":material/directions_run: Personal"])
 
     with tab1:
-        st.subheader("New Assignment")
+        st.subheader("New Assignment / Study Goal")
         mode = st.radio("Scheduling Method", ["Manual Time (Add to Calendar Now)", "Auto-Schedule (Let AI decide)"], horizontal=True)
 
         with st.form("form_assignment"):
@@ -192,13 +221,13 @@ def render_add_task():
 
             if "Manual" in mode:
                 d1, d2, d3 = st.columns(3)
-                work_date = d1.date_input("Work Date")
-                start_t = d2.time_input("Start Time")
-                end_t = d3.time_input("End Time")
+                work_date = d1.date_input("Work Date", format="DD/MM/YYYY")
+                start_t = d2.time_input("Start Time", value=dt_time(13, 0))
+                end_t = d3.time_input("End Time", value=dt_time(14, 0))
             else:
-                duration = c4.number_input("Duration (mins)", min_value=15, value=60, step=15)
+                duration = c4.number_input("Total Duration (mins)", min_value=15, value=120, step=15, help="If >90 mins, AI will automatically split this into multiple blocks!")
                 d1, d2 = st.columns(2)
-                deadline = d1.date_input("Deadline")
+                deadline = d1.date_input("Deadline", format="DD/MM/YYYY")
                 pref_time = d2.selectbox("Preferred Time", ["Any", "Morning", "Afternoon", "Evening"])
 
             notes = st.text_area("Notes")
@@ -209,9 +238,19 @@ def render_add_task():
                     st_str = datetime.combine(work_date, start_t).isoformat()
                     en_str = datetime.combine(work_date, end_t).isoformat()
                     insert_task(name, module, priority, dur, None, "Any", 1, st_str, en_str, notes)
+                    st.success("Assignment added to planner.")
                 else:
-                    insert_task(name, module, priority, duration, deadline.isoformat(), pref_time, 0, None, None, notes)
-                st.success("Assignment added to planner.")
+                    if duration > 90:
+                        chunks = duration // 60
+                        rem = duration % 60
+                        for i in range(chunks):
+                            insert_task(f"{name} (Pt {i+1})", module, priority, 60, deadline.isoformat(), pref_time, 0, None, None, notes)
+                        if rem > 0:
+                            insert_task(f"{name} (Pt {chunks+1})", module, priority, rem, deadline.isoformat(), pref_time, 0, None, None, notes)
+                        st.success(f"Task automatically split into {chunks + (1 if rem>0 else 0)} blocks for optimal AI spaced-scheduling.")
+                    else:
+                        insert_task(name, module, priority, duration, deadline.isoformat(), pref_time, 0, None, None, notes)
+                        st.success("Assignment saved for AI scheduling.")
 
     with tab2:
         with st.form("form_class"):
@@ -220,9 +259,9 @@ def render_add_task():
             module = c1.text_input("Module Name")
             room = c2.text_input("Room")
             d1, d2, d3 = st.columns(3)
-            class_date = d1.date_input("Date")
-            start_t = d2.time_input("Start")
-            end_t = d3.time_input("End")
+            class_date = d1.date_input("Date", format="DD/MM/YYYY")
+            start_t = d2.time_input("Start Time", value=dt_time(13, 0))
+            end_t = d3.time_input("End Time", value=dt_time(14, 0))
             repeat = st.checkbox("Repeat weekly for 4 weeks")
             if st.form_submit_button("Add to Calendar", type="primary"):
                 dur = int((datetime.combine(date.today(), end_t) - datetime.combine(date.today(), start_t)).total_seconds() / 60)
@@ -240,9 +279,9 @@ def render_add_task():
             module = c1.text_input("Subject")
             seat = c2.text_input("Seat")
             d1, d2, d3 = st.columns(3)
-            ex_date = d1.date_input("Date")
-            start_t = d2.time_input("Start")
-            end_t = d3.time_input("End")
+            ex_date = d1.date_input("Date", format="DD/MM/YYYY")
+            start_t = d2.time_input("Start Time", value=dt_time(13, 0))
+            end_t = d3.time_input("End Time", value=dt_time(14, 0))
             if st.form_submit_button("Add to Calendar", type="primary"):
                 dur = int((datetime.combine(date.today(), end_t) - datetime.combine(date.today(), start_t)).total_seconds() / 60)
                 st_str = datetime.combine(ex_date, start_t).isoformat()
@@ -259,9 +298,9 @@ def render_add_task():
             is_fixed = c2.checkbox("Fixed Time?")
             if is_fixed:
                 d1, d2, d3 = st.columns(3)
-                p_date = d1.date_input("Date")
-                start_t = d2.time_input("Start")
-                end_t = d3.time_input("End")
+                p_date = d1.date_input("Date", format="DD/MM/YYYY")
+                start_t = d2.time_input("Start Time", value=dt_time(13, 0))
+                end_t = d3.time_input("End Time", value=dt_time(14, 0))
                 pref_time = "Any"
             else:
                 pref_time = st.selectbox("Preferred Time", ["Any", "Morning", "Afternoon", "Evening"])
@@ -274,26 +313,17 @@ def render_add_task():
                     insert_task(name, "Personal", "Low", duration, None, pref_time, 0, None, None, "")
                 st.success("Activity saved.")
 
-def insert_task(name, mod, prio, dur, dead, pref, fix, st_t, en_t, note):
-    conn = get_connection()
-    c = conn.cursor()
-    c.execute("INSERT INTO tasks (id, name, module, priority, duration, deadline, preferred_time, is_fixed, start_time, end_time, completed, notes) VALUES (?,?,?,?,?,?,?,?,?,?,0,?)",
-              (str(uuid.uuid4()), name, mod, prio, dur, dead, pref, fix, st_t, en_t, note))
-    conn.commit()
-    conn.close()
-
 # ==========================================
 # VIEW 3: SCHEDULE GENERATOR
 # ==========================================
 def render_schedule_generator():
     st.markdown("<h1 style='color: #0F172A;'>AI Schedule Engine</h1>", unsafe_allow_html=True)
+    st.markdown("<p style='color: #64748B; font-size: 16px; margin-bottom: 20px;'>What do you want to learn? Type a goal and the AI will build a daily habit schedule.</p>", unsafe_allow_html=True)
 
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM user_preferences")
     prefs = {row['key']: int(row['value']) for row in cursor.fetchall()}
-    cursor.execute("SELECT * FROM tasks WHERE completed = 0 AND module != 'Break'")
-    all_tasks = [dict(row) for row in cursor.fetchall()]
     conn.close()
 
     day_start = prefs.get('day_start', 8)
@@ -301,14 +331,46 @@ def render_schedule_generator():
     max_hrs = prefs.get('max_hours', 6)
     b_mins = prefs.get('break_mins', 15)
 
-    with st.expander(":material/settings: Engine Parameters", expanded=True):
+    goal_input = st.text_input("Goal", placeholder="e.g. Master Python, Calculus Revision...", label_visibility="collapsed")
+
+    with st.expander(":material/tune: Goal Settings & Engine Parameters", expanded=True):
+        st.markdown("**Goal Preferences (If typing above)**")
+        c_hrs, c_prio, c_pref = st.columns(3)
+        goal_hours = c_hrs.number_input("Hours Per Day", min_value=1, max_value=24, value=2, help="How many hours do you want to dedicate to this task EACH day?")
+        goal_prio = c_prio.selectbox("Priority", ["High", "Medium", "Low"], key="g_prio")
+        goal_pref = c_pref.selectbox("Preferred Time", ["Any", "Morning", "Afternoon", "Evening"], key="g_pref")
+
+        st.divider()
+        st.markdown("**Engine Parameters**")
         c1, c2, c3 = st.columns(3)
         engine = c1.selectbox("Algorithm", ["Greedy (Fast, Sequential)", "CP-SAT (Global Optimization)", "Compare Both"])
-        start_date = c2.date_input("Week Start", value=date.today())
+        start_date = c2.date_input("Week Start", value=date.today(), format="DD/MM/YYYY")
         days_out = c3.slider("Days to Schedule", 1, 14, 7)
 
     if st.button(":material/auto_awesome: Generate Schedule", type="primary", use_container_width=True):
-        with st.spinner("Calculating optimal routing..."):
+        with st.spinner("Calculating optimal routing and applying to calendar..."):
+
+            if goal_input:
+                duration_mins = int(goal_hours * 60)
+                chunks_per_day = duration_mins // 60
+                rem = duration_mins % 60
+                part_num = 1
+
+                for day_offset in range(days_out):
+                    target_date = start_date + timedelta(days=day_offset)
+                    for i in range(chunks_per_day):
+                        insert_task(f"{goal_input} (Pt {part_num})", "Self-Study", goal_prio, 60, target_date.isoformat(), goal_pref, 0, None, None, "AI Generated Habit")
+                        part_num += 1
+                    if rem > 0:
+                        insert_task(f"{goal_input} (Pt {part_num})", "Self-Study", goal_prio, rem, target_date.isoformat(), goal_pref, 0, None, None, "AI Generated Habit")
+                        part_num += 1
+
+            conn = get_connection()
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM tasks WHERE completed = 0 AND module != 'Break'")
+            all_tasks = [dict(row) for row in cursor.fetchall()]
+            conn.close()
+
             if "Greedy" in engine or "Compare" in engine:
                 greedy_result = generate_greedy_schedule([dict(t) for t in all_tasks], start_date, days_out, day_start, day_end, max_hrs, b_mins)
                 st.session_state.greedy_res = greedy_result
@@ -317,66 +379,53 @@ def render_schedule_generator():
                 st.session_state.cpsat_res = cpsat_result
             st.session_state.show_results = engine
 
+            if "Compare Both" in engine:
+                apply_schedule_with_breaks(st.session_state.cpsat_res, b_mins)
+            elif "Greedy" in engine:
+                apply_schedule_with_breaks(st.session_state.greedy_res, b_mins)
+            else:
+                apply_schedule_with_breaks(st.session_state.cpsat_res, b_mins)
+
+            st.success("Calendar updated automatically! Head to the Calendar tab to see your schedule.")
+
     if st.session_state.get('show_results'):
         engine_mode = st.session_state.show_results
+        st.markdown("### What was scheduled:")
+
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM tasks WHERE completed = 0 AND module != 'Break'")
+        current_tasks = [dict(row) for row in cursor.fetchall()]
+        conn.close()
 
         if engine_mode == "Compare Both":
             c_g, c_c = st.columns(2)
             with c_g:
                 st.subheader("Greedy Results")
-                summ_g = generate_schedule_summary(st.session_state.greedy_res, len(all_tasks))
+                summ_g = generate_schedule_summary(st.session_state.greedy_res, len(current_tasks))
                 st.metric("Tasks Placed", f"{summ_g['placed']}/{summ_g['placed']+summ_g['unplaced']}")
             with c_c:
-                st.subheader("CP-SAT Results")
-                summ_c = generate_schedule_summary(st.session_state.cpsat_res, len(all_tasks))
+                st.subheader("CP-SAT Results (Applied)")
+                summ_c = generate_schedule_summary(st.session_state.cpsat_res, len(current_tasks))
                 st.metric("Tasks Placed", f"{summ_c['placed']}/{summ_c['placed']+summ_c['unplaced']}")
 
-            st.markdown("### Decision Breakdown")
-            for t in [x for x in all_tasks if not x['is_fixed']]:
-                g_match = next((x for x in st.session_state.greedy_res if x['id'] == t['id']), {})
-                c_match = next((x for x in st.session_state.cpsat_res if x['id'] == t['id']), {})
-                st.info(f"**{t['name']}**: {compare_explanations(g_match, c_match)}")
-
-            if st.button(":material/save: Apply CP-SAT to Calendar"):
-                apply_schedule_with_breaks(st.session_state.cpsat_res, b_mins)
-                st.success("Calendar Overwritten!")
+            with st.expander("See Engine Decision Breakdown"):
+                for t in [x for x in current_tasks if not x['is_fixed']]:
+                    g_match = next((x for x in st.session_state.greedy_res if x['id'] == t['id']), {})
+                    c_match = next((x for x in st.session_state.cpsat_res if x['id'] == t['id']), {})
+                    st.info(f"**{t['name']}**: {compare_explanations(g_match, c_match)}")
 
         else:
             res = st.session_state.greedy_res if "Greedy" in engine_mode else st.session_state.cpsat_res
-            summ = generate_schedule_summary(res, len(all_tasks))
+            summ = generate_schedule_summary(res, len(current_tasks))
             st.metric("Placement Success", f"{summ['success_rate']}% ({summ['placed']} placed)")
 
-            for t in [x for x in res if x.get('start_time')]:
-                with st.expander(f"{t['start_time'][:16]} - {t['name']}"):
-                    st.caption(f"Reason: {t.get('explanation', 'Fixed Event')}")
-
-            if st.button(":material/save: Apply to Calendar", type="primary"):
-                apply_schedule_with_breaks(res, b_mins)
-                st.success("Calendar updated!")
-
-def apply_schedule_with_breaks(scheduled_tasks, break_mins):
-    conn = get_connection()
-    c = conn.cursor()
-
-    # Remove old AI-generated breaks before applying new schedule
-    c.execute("DELETE FROM tasks WHERE module = 'Break'")
-
-    for task in scheduled_tasks:
-        if task.get('start_time'):
-            c.execute("UPDATE tasks SET start_time = ?, end_time = ? WHERE id = ?", (task['start_time'], task['end_time'], task['id']))
-
-            # Synthesize break block right after the task
-            if not task.get('is_fixed') and break_mins > 0:
-                end_time = datetime.fromisoformat(task['end_time'])
-                break_end = end_time + timedelta(minutes=break_mins)
-                c.execute("INSERT INTO tasks (id, name, module, priority, duration, is_fixed, start_time, end_time, completed) VALUES (?,?,?,?,?,?,?,?,0)",
-                          (str(uuid.uuid4()), "Break", "Break", "Low", break_mins, 1, end_time.isoformat(), break_end.isoformat()))
-
-    conn.commit()
-    conn.close()
+            with st.expander("See Placement Reasoning"):
+                for t in [x for x in res if x.get('start_time')]:
+                    st.caption(f"**{t['name']}**: {t.get('explanation', 'Fixed Event')}")
 
 # ==========================================
-# VIEW 4: CALENDAR (PASTEL/GLASS THEME)
+# VIEW 4: CALENDAR
 # ==========================================
 def render_calendar():
     st.markdown("<h1 style='color: #0F172A;'>My Schedule</h1>", unsafe_allow_html=True)
@@ -396,15 +445,15 @@ def render_calendar():
         bg_color, text_color = "#F1F5F9", "#334155"
 
         if mod == 'Break':
-            bg_color, text_color = "#E2E8F0", "#475569" # Very light grey
+            bg_color, text_color = "#E2E8F0", "#475569"
         elif "exam" in name_lower or "test" in name_lower:
-            bg_color, text_color = "#FECACA", "#7F1D1D" # Soft Rose
+            bg_color, text_color = "#FECACA", "#7F1D1D"
         elif "class" in name_lower or t.get('is_fixed'):
-            bg_color, text_color = "#BAE6FD", "#0C4A6E" # Sky Blue
+            bg_color, text_color = "#BAE6FD", "#0C4A6E"
         elif t['priority'] == 'High':
-            bg_color, text_color = "#C4B5FD", "#4C1D95" # Lilac
+            bg_color, text_color = "#C4B5FD", "#4C1D95"
         else:
-            bg_color, text_color = "#D9F99D", "#14532D" # Mint
+            bg_color, text_color = "#D9F99D", "#14532D"
 
         events.append({
             "id": t['id'],
@@ -418,6 +467,7 @@ def render_calendar():
 
     cal_options = {
         "editable": True,
+        "locale": "en-gb",
         "headerToolbar": {"left": "today prev,next", "center": "title", "right": "timeGridDay,timeGridWeek,dayGridMonth"},
         "initialView": "timeGridWeek",
         "slotMinTime": "06:00:00",
