@@ -96,10 +96,13 @@ def resolve_overlaps(tasks):
     cursor = conn.cursor()
 
     cursor.execute("SELECT * FROM user_preferences")
-    prefs = {row['key']: int(row['value']) for row in cursor.fetchall()}
-    day_start = prefs.get('day_start', 8)
-    day_end = prefs.get('day_end', 22)
-    break_mins = prefs.get('break_mins', 15)
+    raw_prefs = {row['key']: row['value'] for row in cursor.fetchall()}
+    def safe_int(val, default):
+        try: return int(val)
+        except (ValueError, TypeError): return default
+    day_start = safe_int(raw_prefs.get('day_start'), 8)
+    day_end = safe_int(raw_prefs.get('day_end'), 22)
+    break_mins = safe_int(raw_prefs.get('break_mins'), 15)
 
     overlaps = detect_all_overlaps(tasks)
     if not overlaps:

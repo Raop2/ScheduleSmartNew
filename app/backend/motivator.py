@@ -2,6 +2,7 @@ import random
 from datetime import datetime
 from app.backend.database import get_connection
 
+
 def get_greeting():
     hour = datetime.now().hour
     if hour < 12:
@@ -9,6 +10,7 @@ def get_greeting():
     elif hour < 18:
         return random.choice(["Good afternoon! Stay locked in.", "Afternoon check-in. Keep pushing."])
     return random.choice(["Evening session. Let's finish strong.", "Late grind. You've got this."])
+
 
 def get_hype_message():
     messages = [
@@ -19,6 +21,7 @@ def get_hype_message():
         "That is how it's done."
     ]
     return random.choice(messages)
+
 
 def get_streak_message(streak_count):
     milestones = {
@@ -32,6 +35,7 @@ def get_streak_message(streak_count):
     }
     return milestones.get(streak_count, f"{streak_count} days strong. Keep the chain unbroken.")
 
+
 def get_recovery_message():
     messages = [
         "You can still turn this around. Start with one small step.",
@@ -40,6 +44,7 @@ def get_recovery_message():
         "Momentum is built one task at a time. Grab an easy win."
     ]
     return random.choice(messages)
+
 
 def get_focus_tip():
     tips = [
@@ -51,14 +56,35 @@ def get_focus_tip():
     ]
     return random.choice(tips)
 
+
 def get_smart_suggestion():
     conn = get_connection()
     cursor = conn.cursor()
 
+    now = datetime.now()
+    cursor.execute("SELECT * FROM tasks WHERE completed = 0 AND module != 'Break' AND end_time IS NOT NULL")
+    all_pending = [dict(row) for row in cursor.fetchall()]
+    overdue = []
+    for t in all_pending:
+        try:
+            end_dt = datetime.fromisoformat(t['end_time'])
+            if end_dt < now:
+                overdue.append(t)
+        except (ValueError, TypeError):
+            pass
+
+    if overdue:
+        names = [t['name'] for t in overdue[:3]]
+        conn.close()
+        if len(overdue) == 1:
+            return f"You have 1 overdue task: {names[0]}. Complete it now to get back on track."
+        else:
+            return f"You have {len(overdue)} overdue tasks including {', '.join(names)}. Start with the quickest one to build momentum."
+
     cursor.execute("SELECT module, SUM(duration) as total_dur FROM completion_log GROUP BY module ORDER BY total_dur DESC LIMIT 1")
     top_module_row = cursor.fetchone()
 
-    cursor.execute("SELECT COUNT(*) as count FROM completion_log WHERE completion_date = ?", (datetime.now().date().isoformat(),))
+    cursor.execute("SELECT COUNT(*) as count FROM completion_log WHERE completion_date = ?", (now.date().isoformat(),))
     today_count = cursor.fetchone()['count']
 
     conn.close()
