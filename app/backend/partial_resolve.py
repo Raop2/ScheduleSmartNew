@@ -91,11 +91,11 @@ def find_nearest_free_slot(task, booked_slots, anchor_time, day_start, day_end, 
     return None, None
 
 
-def resolve_overlaps(tasks):
+def resolve_overlaps(tasks, user_id):
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute("SELECT * FROM user_preferences")
+    cursor.execute("SELECT * FROM user_preferences WHERE user_id = ?", (user_id,))
     raw_prefs = {row['key']: row['value'] for row in cursor.fetchall()}
     def safe_int(val, default):
         try: return int(val)
