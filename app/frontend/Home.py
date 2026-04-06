@@ -304,6 +304,7 @@ def main():
 
     uid = get_uid()
     st.markdown(APP_CSS, unsafe_allow_html=True)
+    st.markdown("<div style='height: 4px; background: linear-gradient(90deg, #1A73E8 0%, #8430CE 50%, #A78BFA 100%); margin: -1rem -1rem 1rem -1rem; border-radius: 0 0 2px 2px;'></div>", unsafe_allow_html=True)
 
     with st.sidebar:
         logo_path = Path(__file__).parent / "logo.png"
@@ -859,24 +860,90 @@ def render_stats():
     best_day_str = day_counts.idxmax() if not day_counts.empty else None
     best_day_name = datetime.fromisoformat(best_day_str).strftime('%A') if best_day_str else "N/A"
     best_day_count = day_counts.max() if not day_counts.empty else 0
+
     c1, c2, c3, c4, c5 = st.columns(5)
     with c1: st.markdown(f"<div class='stat-card' style='border-top-color: #1A73E8;'><div class='stat-card-value'>{total_tasks}</div><div class='stat-card-label'>Completed</div></div>", unsafe_allow_html=True)
     with c2: st.markdown(f"<div class='stat-card' style='border-top-color: #0B8043;'><div class='stat-card-value'>{total_hours}h</div><div class='stat-card-label'>Hours</div></div>", unsafe_allow_html=True)
     with c3: st.markdown(f"<div class='stat-card' style='border-top-color: #8430CE;'><div class='stat-card-value'>{current_streak}</div><div class='stat-card-label'>Streak</div></div>", unsafe_allow_html=True)
     with c4: st.markdown(f"<div class='stat-card' style='border-top-color: #E37400;'><div class='stat-card-value'>{avg_daily}h</div><div class='stat-card-label'>Daily Avg</div></div>", unsafe_allow_html=True)
     with c5: st.markdown(f"<div class='stat-card' style='border-top-color: #D93025;'><div class='stat-card-value'>{best_day_name[:3]}</div><div class='stat-card-label'>Best Day</div></div>", unsafe_allow_html=True)
+
     st.markdown("<br>", unsafe_allow_html=True)
-    c_chart1, c_chart2 = st.columns(2)
-    with c_chart1:
-        st.markdown("### Completion Heatmap")
-        today = date.today(); weeks_back = 8; start = today - timedelta(days=today.weekday() + (weeks_back * 7))
-        date_counts = df.groupby('completion_date').size().to_dict()
+
+    st.markdown("### This Week")
+    today = date.today()
+    week_start = today - timedelta(days=today.weekday())
+    week_days = []
+    week_tasks = []
+    week_hours = []
+    for i in range(7):
+        d = week_start + timedelta(days=i)
+        day_name = d.strftime('%a')
+        d_str = d.isoformat()
+        day_data = df[df['completion_date'] == d_str]
+        task_count = len(day_data)
+        hour_count = round(day_data['duration'].sum() / 60, 1) if not day_data.empty else 0
+        if d == today:
+            day_name = f"{day_name} (today)"
+        week_days.append(day_name)
+        week_tasks.append(task_count)
+        week_hours.append(hour_count)
+
+    week_df = pd.DataFrame({"Tasks Completed": week_tasks, "Hours Studied": week_hours}, index=week_days)
+
+    col_week1, col_week2 = st.columns(2)
+    with col_week1:
+        st.markdown("**Tasks completed per day**")
+        fig_w, ax_w = plt.subplots(figsize=(6, 2.8))
+        fig_w.patch.set_facecolor('#F8FAFC'); ax_w.set_facecolor('#F8FAFC')
+        bars = ax_w.bar(week_days, week_tasks, color=['#1A73E8' if t > 0 else '#E2E8F0' for t in week_tasks], width=0.6)
+        for bar, val in zip(bars, week_tasks):
+            if val > 0:
+                ax_w.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.15, str(val), ha='center', va='bottom', fontsize=10, fontweight='bold', color='#0F172A')
+        ax_w.set_ylim(0, max(max(week_tasks) + 1.5, 3))
+        ax_w.tick_params(axis='x', labelsize=9, colors='#64748B')
+        ax_w.tick_params(axis='y', labelsize=8, colors='#94A3B8')
+        for s in ax_w.spines: ax_w.spines[s].set_visible(False)
+        ax_w.yaxis.grid(True, alpha=0.15)
+        st.pyplot(fig_w); plt.close(fig_w)
+
+    with col_week2:
+        st.markdown("**Hours studied per day**")
+        fig_h, ax_h = plt.subplots(figsize=(6, 2.8))
+        fig_h.patch.set_facecolor('#F8FAFC'); ax_h.set_facecolor('#F8FAFC')
+        ax_h.fill_between(range(len(week_days)), week_hours, alpha=0.15, color='#8430CE')
+        ax_h.plot(range(len(week_days)), week_hours, color='#8430CE', linewidth=2.5, marker='o', markersize=6, markerfacecolor='white', markeredgewidth=2, markeredgecolor='#8430CE')
+        for i, val in enumerate(week_hours):
+            if val > 0:
+                ax_h.text(i, val + 0.12, f"{val}h", ha='center', va='bottom', fontsize=9, fontweight='bold', color='#5B21B6')
+        ax_h.set_xticks(range(len(week_days)))
+        ax_h.set_xticklabels(week_days, fontsize=9, color='#64748B')
+        ax_h.set_ylim(0, max(max(week_hours) + 0.8, 2))
+        ax_h.tick_params(axis='y', labelsize=8, colors='#94A3B8')
+        for s in ax_h.spines: ax_h.spines[s].set_visible(False)
+        ax_h.yaxis.grid(True, alpha=0.15)
+        st.pyplot(fig_h); plt.close(fig_h)
+
+    st.markdown("<br>", unsafe_allow_html=True)
+    col_heat, col_pie = st.columns(2)
+
+    with col_heat:
+        st.markdown("### Activity Heatmap")
+        earliest_str = df['completion_date'].min()
+        try:
+            earliest_date = date.fromisoformat(earliest_str)
+            days_since = (today - earliest_date).days
+            weeks_back = min(8, max(2, (days_since // 7) + 1))
+        except (ValueError, TypeError):
+            weeks_back = 3
+        start = today - timedelta(days=today.weekday() + (weeks_back * 7))
+        date_counts_map = df.groupby('completion_date').size().to_dict()
         fig, ax = plt.subplots(figsize=(6, 2.5)); fig.patch.set_facecolor('#F8FAFC'); ax.set_facecolor('#F8FAFC')
         for week in range(weeks_back + 1):
             for dow in range(7):
                 d = start + timedelta(days=week * 7 + dow)
                 if d > today: continue
-                count = date_counts.get(d.isoformat(), 0)
+                count = date_counts_map.get(d.isoformat(), 0)
                 color = '#EBEDF0' if count == 0 else '#9BE9A8' if count <= 1 else '#40C463' if count <= 3 else '#30A14E' if count <= 5 else '#216E39'
                 ax.add_patch(plt.Rectangle((week, 6 - dow), 0.9, 0.9, facecolor=color, edgecolor='white', linewidth=1))
         ax.set_xlim(-0.5, weeks_back + 1.5); ax.set_ylim(-0.5, 7.5)
@@ -885,13 +952,16 @@ def render_stats():
         for s in ax.spines: ax.spines[s].set_visible(False)
         ax.tick_params(left=False)
         st.pyplot(fig); plt.close(fig)
-    with c_chart2:
+        st.caption(f"Showing last {weeks_back} weeks — {days_active} active days out of {(today - date.fromisoformat(earliest_str)).days + 1 if earliest_str else 0}")
+
+    with col_pie:
         st.markdown("### Module Breakdown")
         mod_hours = df.groupby('module')['duration'].sum() / 60
         fig2, ax2 = plt.subplots(figsize=(4, 2.5)); fig2.patch.set_facecolor('#F8FAFC')
         mod_hours.plot.pie(ax=ax2, autopct='%1.0f%%', colors=['#8430CE','#1A73E8','#D93025','#0B8043','#E37400','#DADCE0'][:len(mod_hours)], textprops={'color': "#0F172A", 'weight': 'bold', 'fontsize': 9}); ax2.set_ylabel('')
         st.pyplot(fig2); plt.close(fig2)
-    st.markdown("### Daily Activity")
+
+    st.markdown("### All-Time Daily Activity")
     daily_df = pd.DataFrame({"Tasks": df.groupby('completion_date').size()})
     daily_df.index = [datetime.fromisoformat(d).strftime('%a %d/%m') for d in daily_df.index]
     st.bar_chart(daily_df, color="#1A73E8")
