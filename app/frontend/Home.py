@@ -369,22 +369,33 @@ def insert_task(name, mod, prio, dur, dead, pref, fix, st_t, en_t, note):
     conn.commit(); conn.close()
     return task_id
 
-def apply_schedule_with_breaks(scheduled_tasks, break_mins):
+def apply_schedule_with_breaks(scheduled_tasks, break_mins, new_task_ids=None):
     uid = get_uid()
     conn = get_connection(); c = conn.cursor()
-    c.execute("DELETE FROM tasks WHERE module = 'Break' AND user_id = ?", (uid,))
+    if new_task_ids is None:
+        # Legacy behaviour: update everything
+        c.execute("DELETE FROM tasks WHERE module = 'Break' AND user_id = ?", (uid,))
     for task in scheduled_tasks:
         if task.get('start_time'):
-            c.execute("UPDATE tasks SET start_time = ?, end_time = ? WHERE id = ?", (task['start_time'], task['end_time'], task['id']))
-            if not task.get('is_fixed') and break_mins > 0:
-                end_time = datetime.fromisoformat(task['end_time']); break_end = end_time + timedelta(minutes=break_mins)
-                c.execute("INSERT INTO tasks (id, user_id, name, module, priority, duration, is_fixed, start_time, end_time, completed) VALUES (?,?,?,?,?,?,?,?,?,0)", (str(uuid.uuid4()), uid, "Break", "Break", "Low", break_mins, 1, end_time.isoformat(), break_end.isoformat()))
+            # Only update tasks that are new or if no filter specified
+            if new_task_ids is None or task['id'] in new_task_ids:
+                c.execute("UPDATE tasks SET start_time = ?, end_time = ? WHERE id = ?", (task['start_time'], task['end_time'], task['id']))
+                if not task.get('is_fixed') and break_mins > 0:
+                    end_time = datetime.fromisoformat(task['end_time']); break_end = end_time + timedelta(minutes=break_mins)
+                    c.execute("INSERT INTO tasks (id, user_id, name, module, priority, duration, is_fixed, start_time, end_time, completed) VALUES (?,?,?,?,?,?,?,?,?,0)", (str(uuid.uuid4()), uid, "Break", "Break", "Low", break_mins, 1, end_time.isoformat(), break_end.isoformat()))
     conn.commit(); conn.close()
 
 def get_task_source(task):
     if task.get('notes') == 'AI Generated Habit': return "AI Generated"
     elif task.get('is_fixed'): return "Manual"
     else: return "Auto-Scheduled"
+
+def cleanup_break_after(task):
+    if task.get('end_time'):
+        uid = get_uid()
+        conn = get_connection(); c = conn.cursor()
+        c.execute("DELETE FROM tasks WHERE module = 'Break' AND start_time = ? AND user_id = ?", (task['end_time'], uid))
+        conn.commit(); conn.close()
 
 def get_event_color(task):
     mod = task.get('module', 'Other'); name_lower = task['name'].lower(); priority = task.get('priority', 'Medium')
@@ -513,7 +524,7 @@ def render_dashboard():
                         except ValueError: pass
                 with col2:
                     if st.button(":material/check_circle: Complete", key=f"d_{t['id']}", use_container_width=True):
-                        mark_task_completed(t['id'], t['module'], t['duration'], uid); st.toast(get_hype_message()); time.sleep(1); st.rerun()
+                        mark_task_completed(t['id'], t['module'], t['duration'], uid); cleanup_break_after(t); st.toast(get_hype_message()); time.sleep(1); st.rerun()
     report = generate_weekly_report()
     if report: st.markdown(f"<div class='weekly-report'><h4 style='margin: 0 0 12px 0; color: #0F172A;'>Weekly Summary</h4><p>{report}</p></div>", unsafe_allow_html=True)
     st.markdown(f"<div class='suggestion-box'><strong>Smart Suggestion:</strong> {get_smart_suggestion(uid)}</div>", unsafe_allow_html=True)
@@ -664,6 +675,7 @@ def render_schedule_generator():
 
     if st.button(":material/auto_awesome: Generate Schedule", type="primary", use_container_width=True):
         with st.spinner("Generating your personalised study plan..."):
+            new_task_ids = set()
             if goal_input:
                 duration_mins = int(goal_hours * 60); chunks_per_day = duration_mins // 60; rem = duration_mins % 60
                 total_sessions = days_out * chunks_per_day + (days_out if rem > 0 else 0)
@@ -673,20 +685,43 @@ def render_schedule_generator():
                     target_date = start_date + timedelta(days=day_offset)
                     for i in range(chunks_per_day):
                         task_name = curriculum_plan[session_idx] if session_idx < len(curriculum_plan) else f"{subject_name}: Review Session"
-                        insert_task(task_name, subject_name, goal_prio, 60, target_date.isoformat(), goal_pref, 0, None, None, "AI Generated Habit")
+                        tid = insert_task(task_name, subject_name, goal_prio, 60, target_date.isoformat(), goal_pref, 0, None, None, "AI Generated Habit")
+                        new_task_ids.add(tid)
                         session_idx += 1
                     if rem > 0:
                         task_name = curriculum_plan[session_idx] if session_idx < len(curriculum_plan) else f"{subject_name}: Review Session"
-                        insert_task(task_name, subject_name, goal_prio, rem, target_date.isoformat(), goal_pref, 0, None, None, "AI Generated Habit")
+                        tid = insert_task(task_name, subject_name, goal_prio, rem, target_date.isoformat(), goal_pref, 0, None, None, "AI Generated Habit")
+                        new_task_ids.add(tid)
                         session_idx += 1
             conn = get_connection(); cursor = conn.cursor(); cursor.execute("SELECT * FROM tasks WHERE completed = 0 AND module != 'Break' AND user_id = ?", (uid,)); all_tasks = [dict(row) for row in cursor.fetchall()]; conn.close()
+            # Protect existing scheduled tasks — mark them as fixed so the engine doesn't move them
+            for t in all_tasks:
+                if t.get('start_time') and t.get('end_time') and not t.get('is_fixed'):
+                    t['_was_flexible'] = True
+                    t['is_fixed'] = True
             if "Greedy" in engine or "Compare" in engine: st.session_state.greedy_res = generate_greedy_schedule([dict(t) for t in all_tasks], start_date, days_out, day_start, day_end, max_hrs, b_mins)
             if CPSAT_AVAILABLE and ("CP-SAT" in engine or "Compare" in engine): st.session_state.cpsat_res = generate_cpsat_schedule([dict(t) for t in all_tasks], start_date, days_out, day_start, day_end, max_hrs, b_mins)
+            # Restore original is_fixed status before saving
+            for t in all_tasks:
+                if t.get('_was_flexible'):
+                    t['is_fixed'] = False
+                    del t['_was_flexible']
+            if 'greedy_res' in st.session_state:
+                for t in st.session_state.greedy_res:
+                    if t.get('_was_flexible'):
+                        t['is_fixed'] = False
+                        del t['_was_flexible']
+            if 'cpsat_res' in st.session_state:
+                for t in st.session_state.cpsat_res:
+                    if t.get('_was_flexible'):
+                        t['is_fixed'] = False
+                        del t['_was_flexible']
             st.session_state.show_results = engine; st.session_state.days_out = days_out
-            if "Compare Both" in engine and CPSAT_AVAILABLE: apply_schedule_with_breaks(st.session_state.cpsat_res, b_mins)
-            elif "Greedy" in engine: apply_schedule_with_breaks(st.session_state.greedy_res, b_mins)
-            elif CPSAT_AVAILABLE: apply_schedule_with_breaks(st.session_state.cpsat_res, b_mins)
-            else: apply_schedule_with_breaks(st.session_state.greedy_res, b_mins)
+            filter_ids = new_task_ids if new_task_ids else None
+            if "Compare Both" in engine and CPSAT_AVAILABLE: apply_schedule_with_breaks(st.session_state.cpsat_res, b_mins, filter_ids)
+            elif "Greedy" in engine: apply_schedule_with_breaks(st.session_state.greedy_res, b_mins, filter_ids)
+            elif CPSAT_AVAILABLE: apply_schedule_with_breaks(st.session_state.cpsat_res, b_mins, filter_ids)
+            else: apply_schedule_with_breaks(st.session_state.greedy_res, b_mins, filter_ids)
             st.success("Calendar updated! Head to Calendar tab.")
     if st.session_state.get('show_results'):
         engine_mode = st.session_state.show_results; st.markdown("### What was scheduled:")
@@ -826,8 +861,9 @@ def edit_dialog(task):
         conn.commit(); conn.close(); st.session_state.dismissed_overlaps = set(); st.rerun()
     st.markdown("---")
     c1, c2 = st.columns(2)
-    if c1.button(":material/check_circle: Complete", use_container_width=True): mark_task_completed(task['id'], task['module'], task['duration'], uid); st.toast(get_hype_message()); time.sleep(1.5); st.rerun()
+    if c1.button(":material/check_circle: Complete", use_container_width=True): mark_task_completed(task['id'], task['module'], task['duration'], uid); cleanup_break_after(task); st.toast(get_hype_message()); time.sleep(1.5); st.rerun()
     if c2.button(":material/delete: Delete", use_container_width=True):
+        cleanup_break_after(task)
         conn = get_connection(); conn.cursor().execute("DELETE FROM tasks WHERE id=? AND user_id=?", (task['id'], uid)); conn.commit(); conn.close(); st.rerun()
 
 def render_focus_mode():
@@ -846,7 +882,7 @@ def render_focus_mode():
             if p % 25 == 0: ph.info(f"Coach: {get_focus_tip()}")
         my_bar.progress(100, text="Session complete!"); ph.empty(); st.balloons()
         st.markdown(f"<div class='focus-card' style='border-top: 3px solid #0B8043; text-align: center;'><h3 style='color: #0B8043;'>{get_hype_message()}</h3><p style='color: #64748B;'>{selected_task['name']} · {selected_task.get('duration', 0)} mins completed</p></div>", unsafe_allow_html=True)
-        mark_task_completed(selected_task['id'], selected_task['module'], selected_task['duration'], uid); time.sleep(3); st.rerun()
+        mark_task_completed(selected_task['id'], selected_task['module'], selected_task['duration'], uid); cleanup_break_after(selected_task); time.sleep(3); st.rerun()
 
 def render_stats():
     uid = get_uid()
