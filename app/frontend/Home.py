@@ -402,7 +402,7 @@ def get_event_color(task):
     if mod == 'Break': return "#DADCE0", "#F1F3F4", "#80868B"
     if is_task_overdue(task): return "#D93025", "#FCEAE9", "#A50E0E"
     elif "exam" in name_lower or "test" in name_lower: return "#D93025", "#FCEAE9", "#A50E0E"
-    elif "class" in name_lower or task.get('is_fixed'): return "#1A73E8", "#D2E3FC", "#174EA6"
+    elif "class" in name_lower or "lecture" in name_lower or "seminar" in name_lower or "lab" in name_lower: return "#1A73E8", "#D2E3FC", "#174EA6"
     elif priority == 'High': return "#8430CE", "#E9D5FF", "#5B21B6"
     elif priority == 'Medium': return "#0B8043", "#CEEAD6", "#0D652D"
     else: return "#E37400", "#FEF3C7", "#92400E"
