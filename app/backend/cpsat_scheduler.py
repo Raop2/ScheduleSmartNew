@@ -1,11 +1,21 @@
+import math
 from ortools.sat.python import cp_model
 from datetime import datetime, timedelta
 from app.backend.explanation import build_cpsat_reason
 
-def get_slot_index(target_time, base_date, day_start):
+def get_slot_index(target_time, base_date, day_start, day_end):
     day_offset = (target_time.date() - base_date).days
-    minutes_from_start = (target_time.hour - day_start) * 60 + target_time.minute
-    return int((day_offset * 24 * 60 + minutes_from_start) / 30)
+    slots_per_day = (day_end - day_start) * 2
+    minutes_from_day_start = (target_time.hour - day_start) * 60 + target_time.minute
+    slot_in_day = int(minutes_from_day_start / 30)
+    return day_offset * slots_per_day + slot_in_day
+
+def get_end_slot_index(target_time, base_date, day_start, day_end):
+    day_offset = (target_time.date() - base_date).days
+    slots_per_day = (day_end - day_start) * 2
+    minutes_from_day_start = (target_time.hour - day_start) * 60 + target_time.minute
+    slot_in_day = math.ceil(minutes_from_day_start / 30)
+    return day_offset * slots_per_day + slot_in_day
 
 def parse_time_window_slots(preferred_time, day_start, day_end):
     windows = {
@@ -33,11 +43,13 @@ def generate_cpsat_schedule(tasks, start_date, days_to_schedule, day_start, day_
             st = datetime.fromisoformat(ft['start_time'])
             et = datetime.fromisoformat(ft['end_time'])
 
-            start_slot = get_slot_index(st, start_date, day_start)
-            duration_slots = max(1, int(((et - st).total_seconds() / 60) / 30))
+            start_slot = get_slot_index(st, start_date, day_start, day_end)
+            end_slot = get_end_slot_index(et, start_date, day_start, day_end)
+            duration_slots = max(1, end_slot - start_slot)
 
             if 0 <= start_slot < total_slots:
-                interval = model.NewFixedSizeIntervalVar(start_slot, duration_slots, f"fixed_{ft['id']}")
+                clamped_duration = min(duration_slots, total_slots - start_slot)
+                interval = model.NewFixedSizeIntervalVar(start_slot, clamped_duration, f"fixed_{ft['id']}")
                 intervals.append(interval)
 
     daily_loads = {d: [] for d in range(days_to_schedule)}
@@ -154,7 +166,7 @@ def generate_cpsat_schedule(tasks, start_date, days_to_schedule, day_start, day_
             task_ref['start_time'] = dt_start.isoformat()
             task_ref['end_time'] = dt_end.isoformat()
 
-            was_preferred = flex.get('preferred_time') != 'Any' and status == cp_model.OPTIMAL
+            was_preferred = var_dict['task'].get('preferred_time') != 'Any' and status == cp_model.OPTIMAL
             task_ref['explanation'] = build_cpsat_reason(task_ref, str(actual_date), str(dt_start.time()), was_preferred)
 
     return fixed_tasks + flexible_tasks

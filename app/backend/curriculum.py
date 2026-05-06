@@ -5,7 +5,7 @@ Maps user goals to specific, ordered topic sequences.
 """
 
 CURRICULUM_DB = {
-    # ===== COMPUTER SCIENCE =====
+
     "python": {
         "name": "Python Programming",
         "topics": [
