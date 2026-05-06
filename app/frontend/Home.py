@@ -1,3 +1,9 @@
+"""
+Home.py — ScheduleSmart V2 Frontend
+Main Streamlit application containing all 7 views (Dashboard, Add Task,
+Schedule Generator, Calendar, Focus Mode, Analytics, Settings) plus the
+login system with user authentication and guest mode. ~1000 lines.
+"""
 import sys
 import os
 import time

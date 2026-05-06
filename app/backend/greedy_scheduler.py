@@ -1,3 +1,9 @@
+"""
+greedy_scheduler.py — Greedy Scheduling Engine
+Sorts tasks by deadline and priority, then places each one in the
+first available slot. Fast and predictable but myopic (doesn't look ahead).
+Implements FR-02.
+"""
 from datetime import datetime, timedelta
 from app.backend.explanation import build_greedy_reason
 

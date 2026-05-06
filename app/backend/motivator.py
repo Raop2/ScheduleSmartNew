@@ -1,3 +1,10 @@
+"""
+motivator.py — Motivational Message System
+Generates dynamic greetings, hype messages, streak celebrations,
+recovery messages, focus tips, and smart suggestions.
+Adapts to time of day, completion status, and overdue tasks.
+Implements FR-09, FR-10.
+"""
 import random
 from datetime import datetime
 from app.backend.database import get_connection

@@ -1,3 +1,8 @@
+"""
+models.py — Pydantic Data Models
+Defines request/response schemas for the FastAPI backend API.
+Validates task structure, priority levels, and scheduling parameters.
+"""
 from enum import Enum
 from typing import List, Optional
 from datetime import datetime

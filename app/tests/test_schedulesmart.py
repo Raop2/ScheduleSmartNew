@@ -1,3 +1,10 @@
+"""
+test_schedulesmart.py — Unit Test Suite
+78 tests across 16 test classes covering both scheduling engines,
+curriculum matching, overlap detection, password hashing, ICS export,
+explanation engine, motivational system, and datetime parsing.
+Run with: python -m pytest app/tests/ -v
+"""
 import sys
 import os
 import unittest

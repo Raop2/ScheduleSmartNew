@@ -1,3 +1,9 @@
+"""
+partial_resolve.py — Overlap Detection and Conflict Resolution
+Detects time conflicts between scheduled tasks and resolves them by
+moving lower-priority tasks to the nearest free slot.
+Implements FR-11.
+"""
 from datetime import datetime, timedelta
 from app.backend.database import get_connection
 

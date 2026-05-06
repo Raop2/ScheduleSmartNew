@@ -1,3 +1,9 @@
+"""
+launcher.py — Desktop Application Entry Point
+Starts a local Streamlit server in headless mode on localhost:8501.
+Used by the PyInstaller exe build. User opens browser manually.
+Implements FR-20 and NFR-05 (offline operation).
+"""
 import sys
 import os
 from pathlib import Path

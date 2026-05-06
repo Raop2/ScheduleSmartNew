@@ -1,7 +1,9 @@
 """
-ScheduleSmart Curriculum Engine
-Generates structured study plans based on subject recognition.
-Maps user goals to specific, ordered topic sequences.
+curriculum.py — Smart Curriculum Engine
+Recognises 34 subjects across 10 categories with 80+ keyword aliases.
+Generates structured study plans with specific topics in learning order.
+Unrecognised subjects get a generic review/practice/assessment plan.
+Implements FR-12.
 """
 
 CURRICULUM_DB = {

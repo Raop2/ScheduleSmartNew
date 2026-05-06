@@ -1,3 +1,9 @@
+"""
+explanation.py — Schedule Explanation Engine
+Generates human-readable reasons for every scheduling decision.
+Makes the AI explainable — students see WHY each task was placed
+where it was, not just WHEN. Implements FR-05.
+"""
 from datetime import datetime
 
 

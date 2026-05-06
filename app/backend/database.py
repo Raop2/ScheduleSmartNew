@@ -1,3 +1,9 @@
+"""
+database.py — SQLite Database and Authentication
+Handles schema creation, user auth (SHA-256 hashing), task CRUD,
+completion logging, preferences, and streaks. All tables scoped
+by user_id for data isolation. Implements FR-14, FR-15, NFR-06, NFR-07.
+"""
 import sqlite3
 import os
 import hashlib

@@ -1,3 +1,8 @@
+"""
+export_service.py — ICS Calendar Export
+Generates standard .ics files from scheduled tasks for import into
+Google Calendar, Apple Calendar, or Outlook. Implements FR-07.
+"""
 from icalendar import Calendar, Event
 from datetime import datetime
 

@@ -1,3 +1,9 @@
+"""
+build.py — PyInstaller Build Script
+Bundles the entire application into a standalone Windows executable.
+Configures hidden imports for Streamlit, OR-Tools, and Pydantic that
+PyInstaller cannot detect automatically. Output: dist/ScheduleSmart/
+"""
 import subprocess
 import sys
 

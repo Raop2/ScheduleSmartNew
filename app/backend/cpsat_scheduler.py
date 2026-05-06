@@ -1,3 +1,9 @@
+"""
+cpsat_scheduler.py — CP-SAT Constraint Solver Engine
+Uses Google OR-Tools to model the entire week as a constraint satisfaction
+problem and find the globally optimal schedule. Balances workload across days,
+respects priorities and time preferences. Implements FR-03.
+"""
 import math
 from ortools.sat.python import cp_model
 from datetime import datetime, timedelta
